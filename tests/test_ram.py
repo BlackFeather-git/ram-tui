@@ -134,7 +134,6 @@ class TerminalAndCliTests(unittest.TestCase):
         self.assertTrue(tm._restored)
 
     def test_real_cli_json_stdout_execution(self):
-        """Executes the actual CLI script via subprocess and validates real JSON stdout."""
         cmd = [sys.executable, os.path.join(ROOT, "ram"), "--json"]
         out = subprocess.check_output(cmd, universal_newlines=True)
         parsed = json.loads(out)

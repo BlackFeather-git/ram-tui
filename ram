@@ -22,7 +22,7 @@ import shutil
 import heapq
 from datetime import datetime
 
-__version__ = "0.4.2"
+__version__ = "0.4.3"
 SYSTEM_OS = platform.system()
 
 PAGE_SIZE = 4096
@@ -633,8 +633,12 @@ def get_processes_windows(group_by_name=True, limit=8):
             psapi_mem.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_ulong]
             psapi_mem.restype = ctypes.c_int
 
+        # INVALID_HANDLE_VALUE on 64-bit and 32-bit Windows
+        INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
+
         h_snap = k32.CreateToolhelp32Snapshot(0x00000002, 0)
-        if not h_snap or h_snap == ctypes.c_void_p(-1).value:
+        # Robust sentinel check (C-201 resolution)
+        if not h_snap or h_snap == INVALID_HANDLE_VALUE or h_snap == -1:
             return []
 
         pe = PROCESSENTRY32W()
@@ -646,7 +650,7 @@ def get_processes_windows(group_by_name=True, limit=8):
                 name = sanitize_text(pe.szExeFile)
                 if pid > 0:
                     h_proc = k32.OpenProcess(0x0400 | 0x0010, False, pid)  # PROCESS_QUERY_INFORMATION | PROCESS_VM_READ
-                    if h_proc:
+                    if h_proc and h_proc != INVALID_HANDLE_VALUE:
                         try:
                             pmc = PROCESS_MEMORY_COUNTERS()
                             pmc.cb = ctypes.sizeof(PROCESS_MEMORY_COUNTERS)
