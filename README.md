@@ -3,14 +3,15 @@
 > *"Small enough to understand. Accurate enough to trust. Fast enough to leave running."*  
 > *"I made this because I wanted it - and now anyone can depend on it."*
 
-`ram-tui` is a lightweight, cross-platform terminal memory monitor written in Python for **Linux, macOS, and Windows**. It provides real-time, best-effort memory statistics using platform-native data sources, process resident-memory ranking, optional process grouping, configurable refresh rates, one-shot snapshots, and machine-readable JSON output.
+A clean, real-time memory monitor for your terminal.
 
-> [!NOTE]
-> Metrics may differ between Linux, macOS, and Windows because each operating system exposes memory information differently (e.g. Linux `MemAvailable` vs macOS inactive/speculative memory vs Windows commit/pagefile limits). `ram-tui` queries each platform's native subsystem for the most accurate local representation.
+Most system monitors are either bloated full-screen dashboards or bare-bones CLI outputs without context. `ram-tui` gives you a fast, zero-dependency TUI with dynamic usage bars, ZRAM detection, and aggregated process rankings across Linux, macOS, and Windows.
+
+Single file. Standard library only. No installation headaches.
 
 ---
 
-## What it shows
+## Preview
 
 ```text
 RAM USAGE — my-laptop  Sun 21:47:21
@@ -29,31 +30,24 @@ code (6)             384.6 MB  ███░░░░░░░░░░░░░ 
 These 8 account for  3.79 GB (12% of installed RAM)
 ```
 
-Process RSS is a resident-memory measurement, not a claim of unique physical memory ownership. Shared pages can therefore make the sum of process RSS values exceed the system's physical-memory usage.
+> **Note:** Process RSS measures resident memory pages, not strictly exclusive physical RAM. Shared libraries may cause the sum of process RSS values to differ from total system memory usage.
 
 ## Features
 
-- Real-time memory monitoring with zero external dependencies.
-- Linux `/proc` memory and process collection.
-- Windows native memory/process APIs through `ctypes` (`GlobalMemoryStatusEx` & Tool Help API).
-- macOS `vm_stat`/`sysctl` memory collection and `ps` process ranking.
-- Human-readable interactive terminal UI with colored gradient bars.
-- Grouped processes (e.g. `brave (12)`) or individual PIDs.
-- Deterministic process sorting.
-- Configurable refresh rate (20ms – 2000ms) and process count.
-- One-shot snapshot mode (`--once`) and clean JSON mode (`--json`).
-- Pause/resume without collecting new snapshots while paused.
-- Monotonic refresh scheduling to eliminate timing drift.
-- Terminal control-character sanitization to prevent ANSI injection.
-- Standard-library only (Python 3.6+).
+- **Zero dependencies**: Pure Python 3.6+ standard library.
+- **Cross-platform**: Native `/proc` parsing on Linux, `sysctl`/`vm_stat` on macOS, and Win32 APIs via `ctypes` on Windows.
+- **Real-time & smooth**: Monotonic deadline scheduler (default 100ms) with zero terminal flickering.
+- **Process grouping**: Automatically groups multi-process apps (e.g. `brave (12)`) or displays individual PIDs with `1`/`2` hotkeys.
+- **Sanitized rendering**: Strips terminal control characters to prevent ANSI injection.
+- **Automation ready**: Output one-time snapshots with `--once` or machine-readable JSON with `--json`.
 
-## Supported platforms
+## Supported Platforms
 
-| Platform | System memory | Process memory | Notes |
+| Platform | System Memory Source | Process Inspection | Notes |
 |---|---|---|---|
-| Linux | `/proc/meminfo` | `/proc/<pid>/statm` | RSS is lightweight/best-effort; Linux documents `statm` RSS as potentially inaccurate. |
-| macOS | `vm_stat`, `sysctl` | `ps` | Memory categories use macOS semantics and are not direct Linux equivalents. |
-| Windows | `GlobalMemoryStatusEx` | Tool Help + `GetProcessMemoryInfo` | Some protected processes cannot be queried and are skipped. |
+| **Linux** | `/proc/meminfo`, `/proc/swaps` | `/proc/<pid>/statm` | Native ZRAM detection & cached PID name lookups. |
+| **macOS** | `vm_stat`, `sysctl` | `ps` | Native page-size calculation & regex swap extraction. |
+| **Windows** | `GlobalMemoryStatusEx` | Tool Help + `GetProcessMemoryInfo` | Pure `ctypes` Win32 API calls (no `tasklist` shell overhead). |
 
 ## Installation
 
@@ -67,11 +61,9 @@ mkdir -p ~/.local/bin
 cp ram ~/.local/bin/ram
 chmod +x ~/.local/bin/ram
 ```
+*(Make sure `~/.local/bin` is in your `$PATH`)*
 
-Make sure `~/.local/bin` is in your `PATH`.
-
-System-wide:
-
+**System-wide:**
 ```bash
 sudo cp ram /usr/local/bin/ram
 sudo chmod +x /usr/local/bin/ram
@@ -85,81 +77,52 @@ cd ram-tui
 python ram
 ```
 
-The project uses the Windows API through Python's standard-library `ctypes`; it does not require PowerShell commands such as `tasklist`.
-
 ## Usage
 
-Interactive mode:
-
+**Interactive TUI:**
 ```bash
 ram
 ```
 
-One snapshot:
-
+**Single Snapshot:**
 ```bash
 ram --once
 ```
 
-Individual PIDs:
-
+**Show Individual PIDs:**
 ```bash
 ram --no-group
 ```
 
-Faster refresh:
-
+**Faster 50ms Refresh:**
 ```bash
 ram --rate 50
 ```
 
-Show more processes:
-
+**Show Top 16 Processes:**
 ```bash
 ram --count 16
 ```
 
-JSON snapshot:
-
+**JSON Output:**
 ```bash
 ram --json
 ```
 
-JSON plus individual processes:
-
-```bash
-ram --json --no-group --count 16
-```
-
-## CLI
-
-```text
--r, --rate <ms>      Refresh interval in milliseconds (20–2000, default: 100)
--n, --count <N>      Number of top processes (1–10000, default: 8)
--1, --once           Output one snapshot and exit
---json               Output one JSON snapshot and exit
---no-group           Show individual process PIDs instead of grouping
--v, --version        Show version number
-```
-
-Invalid rates/counts are rejected with clear error messages.
-
-## Keybindings
+## Hotkeys
 
 | Key | Action |
 |---|---|
 | `q` / `Ctrl+C` | Quit |
-| `Space` / `p` | Pause / resume |
-| `+` / `=` | Faster refresh, down to 20 ms |
-| `-` / `_` | Slower refresh, up to 2000 ms |
+| `Space` / `p` | Pause / resume live updates |
+| `+` / `=` | Increase refresh rate (down to 20 ms) |
+| `-` / `_` | Decrease refresh rate (up to 2000 ms) |
 | `1` | Group processes by executable name |
-| `2` | Show individual PIDs |
-
-While paused, the program stops collecting new snapshots. The displayed frame remains visible.
+| `2` | Show individual process PIDs |
 
 ## JSON Mode
 
-`--json` emits a clean, machine-readable JSON document with no ANSI escape sequences:
+`--json` outputs a clean, machine-parseable JSON payload:
 
 ```json
 {
@@ -189,7 +152,7 @@ While paused, the program stops collecting new snapshots. The displayed frame re
 }
 ```
 
-## Running Tests
+## Tests
 
 Run the built-in deterministic test suite:
 
@@ -200,7 +163,7 @@ python3 -m unittest tests/test_ram.py
 ## Requirements
 
 - Python 3.6+ on Linux, macOS, or Windows
-- Zero external dependencies (standard library only)
+- Zero third-party dependencies
 
 ## License
 
