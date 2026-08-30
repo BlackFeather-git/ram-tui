@@ -14,9 +14,12 @@ import shutil
 import argparse
 import platform
 import subprocess
+import re
+import csv
+import json
 from datetime import datetime
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 SYSTEM_OS = platform.system()
 
 # Support NO_COLOR standard (https://no-color.org) and dumb terminals
@@ -43,35 +46,48 @@ BLOCK_TRACK = "░"
 BLOCK_BORDER_L = "["
 BLOCK_BORDER_R = "]"
 
-PAGE_SIZE = os.sysconf("SC_PAGE_SIZE") if hasattr(os, "sysconf") else 4096
+try:
+    PAGE_SIZE = os.sysconf("SC_PAGE_SIZE")
+except Exception:
+    PAGE_SIZE = 4096
+
+# Cache PID names to avoid re-reading /proc/[pid]/comm or cmdline on every tick
+PID_NAME_CACHE = {}
 
 
 class TerminalManager:
     """Manages raw terminal state, cursor visibility, and cross-platform non-blocking input."""
     def __init__(self):
-        self.is_tty = sys.stdout.isatty()
+        self.is_tty = sys.stdout.isatty() and sys.stdin.isatty()
         self.orig_termios = None
+        self.fd = None
+
+        if self.is_tty:
+            try:
+                self.fd = sys.stdin.fileno()
+            except Exception:
+                self.is_tty = False
+
         if SYSTEM_OS == "Windows":
-            # Enable ANSI escape sequences on Windows console
             try:
                 import ctypes
                 kernel32 = ctypes.windll.kernel32
                 kernel32.SetConsoleMode(kernel32.GetStdHandle(-11), 7)
             except Exception:
                 pass
-        elif self.is_tty:
+        elif self.is_tty and self.fd is not None:
             try:
                 import termios
-                self.orig_termios = termios.tcgetattr(sys.stdin)
+                self.orig_termios = termios.tcgetattr(self.fd)
             except Exception:
                 self.orig_termios = None
 
     def setup_raw(self):
         if self.is_tty:
-            if SYSTEM_OS != "Windows" and self.orig_termios:
+            if SYSTEM_OS != "Windows" and self.orig_termios and self.fd is not None:
                 try:
                     import tty
-                    tty.setcbreak(sys.stdin.fileno())
+                    tty.setcbreak(self.fd)
                 except Exception:
                     pass
             sys.stdout.write("\033[?25l")  # Hide cursor
@@ -81,10 +97,10 @@ class TerminalManager:
         if self.is_tty:
             sys.stdout.write(f"\033[?25h{C_RESET}\n")  # Show cursor & reset styles
             sys.stdout.flush()
-            if SYSTEM_OS != "Windows" and self.orig_termios:
+            if SYSTEM_OS != "Windows" and self.orig_termios and self.fd is not None:
                 try:
                     import termios
-                    termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.orig_termios)
+                    termios.tcsetattr(self.fd, termios.TCSADRAIN, self.orig_termios)
                 except Exception:
                     pass
 
@@ -212,7 +228,7 @@ def get_meminfo_windows():
         used = total - available
         commit_limit = stat.ullTotalPageFile
         commit_as = commit_limit - stat.ullAvailPageFile
-        cached = 0  # Reclaimable standby memory in Windows
+        cached = 0
         swap_total = max(0, commit_limit - total)
         swap_used = max(0, commit_as - used)
         swap_desc = "pagefile on disk"
@@ -233,54 +249,50 @@ def get_meminfo_windows():
 
 
 def get_meminfo_darwin():
-    """Fetches memory statistics on macOS using sysctl and vm_stat."""
+    """Fetches memory statistics on macOS using sysctl and vm_stat with robust regex parsing."""
     try:
-        # Total memory
         total_str = subprocess.check_output(["sysctl", "-n", "hw.memsize"], text=True).strip()
         total = int(total_str)
 
-        # vm_stat
         vm_out = subprocess.check_output(["vm_stat"], text=True)
         page_size = 4096
         free_pages = active_pages = inactive_pages = speculative_pages = wired_pages = compressed_pages = 0
         for line in vm_out.splitlines():
             if "page size of" in line:
-                parts = line.split()
-                for p in parts:
-                    if p.isdigit():
-                        page_size = int(p)
+                m = re.search(r"(\d+)\s*bytes", line)
+                if m:
+                    page_size = int(m.group(1))
             elif "Pages free:" in line:
-                free_pages = int(line.split(":")[1].strip().rstrip("."))
+                free_pages = int(re.sub(r"[^\d]", "", line.split(":")[1]))
             elif "Pages active:" in line:
-                active_pages = int(line.split(":")[1].strip().rstrip("."))
+                active_pages = int(re.sub(r"[^\d]", "", line.split(":")[1]))
             elif "Pages inactive:" in line:
-                inactive_pages = int(line.split(":")[1].strip().rstrip("."))
+                inactive_pages = int(re.sub(r"[^\d]", "", line.split(":")[1]))
             elif "Pages speculative:" in line:
-                speculative_pages = int(line.split(":")[1].strip().rstrip("."))
+                speculative_pages = int(re.sub(r"[^\d]", "", line.split(":")[1]))
             elif "Pages wired down:" in line:
-                wired_pages = int(line.split(":")[1].strip().rstrip("."))
+                wired_pages = int(re.sub(r"[^\d]", "", line.split(":")[1]))
             elif "Pages occupied by compressor:" in line:
-                compressed_pages = int(line.split(":")[1].strip().rstrip("."))
+                compressed_pages = int(re.sub(r"[^\d]", "", line.split(":")[1]))
 
         available = (free_pages + inactive_pages + speculative_pages) * page_size
         used = total - available
         cached = (inactive_pages + speculative_pages) * page_size
 
-        # Swap
+        # Robust regex for macOS swapusage
         swap_used = swap_total = 0
         try:
             swap_str = subprocess.check_output(["sysctl", "-n", "vm.swapusage"], text=True).strip()
-            # e.g., total = 2048.00M  used = 512.00M  free = 1536.00M
-            parts = swap_str.split()
-            for i, p in enumerate(parts):
-                if p == "total" and i + 2 < len(parts):
-                    val = float(parts[i + 2].rstrip("M").rstrip("G"))
-                    mult = 1024**3 if "G" in parts[i+2] else 1024**2
-                    swap_total = int(val * mult)
-                elif p == "used" and i + 2 < len(parts):
-                    val = float(parts[i + 2].rstrip("M").rstrip("G"))
-                    mult = 1024**3 if "G" in parts[i+2] else 1024**2
-                    swap_used = int(val * mult)
+            # Format: total = 2048.00M  used = 512.00M  free = 1536.00M (encrypted)
+            matches = re.findall(r"(\w+)\s*=\s*([0-9.]+)\s*([KMGTP]?)", swap_str, re.IGNORECASE)
+            units = {"K": 1024, "M": 1024**2, "G": 1024**3, "T": 1024**4, "P": 1024**5}
+            for k, val, unit in matches:
+                mult = units.get(unit.upper(), 1024**2)
+                bytes_num = int(float(val) * mult)
+                if k.lower() == "total":
+                    swap_total = bytes_num
+                elif k.lower() == "used":
+                    swap_used = bytes_num
         except Exception:
             pass
 
@@ -312,7 +324,8 @@ def get_meminfo():
 
 
 def get_processes(group_by_name=True):
-    """Scans active processes across Linux, macOS, and Windows."""
+    """Scans active processes across Linux, macOS, and Windows with caching."""
+    global PID_NAME_CACHE
     procs = {}
 
     if SYSTEM_OS == "Linux":
@@ -321,8 +334,13 @@ def get_processes(group_by_name=True):
         except Exception:
             pids = []
 
+        current_pids = set(pids)
+        # Purge stale PIDs from name cache
+        PID_NAME_CACHE = {k: v for k, v in PID_NAME_CACHE.items() if k in current_pids}
+
         for pid in pids:
             try:
+                # Fast single-file RSS read
                 with open(f"/proc/{pid}/statm", "r") as f:
                     fields = f.read().split()
                     if len(fields) < 2:
@@ -331,24 +349,25 @@ def get_processes(group_by_name=True):
                     if rss_bytes <= 0:
                         continue
 
-                comm = None
-                try:
-                    with open(f"/proc/{pid}/comm", "r") as f:
-                        comm = f.read().strip()
-                except Exception:
-                    pass
-
+                comm = PID_NAME_CACHE.get(pid)
                 if not comm:
                     try:
-                        with open(f"/proc/{pid}/cmdline", "rb") as f:
-                            cmd = f.read().decode(errors="ignore").replace("\x00", " ").strip()
-                            if cmd:
-                                comm = os.path.basename(cmd.split()[0])
+                        with open(f"/proc/{pid}/comm", "r") as f:
+                            comm = f.read().strip()
                     except Exception:
                         pass
 
-                if not comm:
-                    comm = f"PID {pid}"
+                    if not comm:
+                        try:
+                            with open(f"/proc/{pid}/cmdline", "rb") as f:
+                                cmd = f.read().decode(errors="ignore").replace("\x00", " ").strip()
+                                if cmd:
+                                    comm = os.path.basename(cmd.split()[0])
+                        except Exception:
+                            pass
+
+                    comm = comm or f"PID {pid}"
+                    PID_NAME_CACHE[pid] = comm
 
                 if group_by_name:
                     if comm in procs:
@@ -366,14 +385,13 @@ def get_processes(group_by_name=True):
 
     elif SYSTEM_OS == "Windows":
         try:
-            # Fast tasklist parse on Windows
             output = subprocess.check_output(["tasklist", "/FO", "CSV", "/NH"], text=True, errors="ignore")
-            for line in output.splitlines():
-                parts = [p.strip(' "') for p in line.split('","')]
-                if len(parts) >= 5:
-                    name = parts[0]
-                    pid = parts[1]
-                    mem_str = parts[4].replace(",", "").replace(" K", "").replace(" KB", "").strip()
+            reader = csv.reader(output.splitlines())
+            for row in reader:
+                if len(row) >= 5:
+                    name = row[0].strip()
+                    pid = row[1].strip()
+                    mem_str = re.sub(r"[^\d]", "", row[4])
                     if mem_str.isdigit():
                         rss_bytes = int(mem_str) * 1024
                         if group_by_name:
@@ -389,13 +407,14 @@ def get_processes(group_by_name=True):
 
     elif SYSTEM_OS == "Darwin":
         try:
-            # Fast ps parse on macOS
-            output = subprocess.check_output(["ps", "-axo", "rss,comm"], text=True, errors="ignore")
+            # Query pid, rss, and comm cleanly on macOS
+            output = subprocess.check_output(["ps", "-axo", "pid,rss,comm"], text=True, errors="ignore")
             for line in output.splitlines()[1:]:
-                parts = line.strip().split(maxsplit=1)
-                if len(parts) == 2 and parts[0].isdigit():
-                    rss_bytes = int(parts[0]) * 1024
-                    comm = os.path.basename(parts[1])
+                parts = line.strip().split(maxsplit=2)
+                if len(parts) == 3 and parts[1].isdigit():
+                    pid = parts[0]
+                    rss_bytes = int(parts[1]) * 1024
+                    comm = os.path.basename(parts[2])
                     if group_by_name:
                         if comm in procs:
                             procs[comm]["rss"] += rss_bytes
@@ -403,7 +422,7 @@ def get_processes(group_by_name=True):
                         else:
                             procs[comm] = {"name": comm, "rss": rss_bytes, "count": 1}
                     else:
-                        procs[comm] = {"name": comm, "rss": rss_bytes, "count": 1}
+                        procs[pid] = {"name": f"{comm} [{pid}]", "rss": rss_bytes, "count": 1}
         except Exception:
             pass
 
@@ -447,9 +466,24 @@ def main():
     parser.add_argument("-r", "--rate", type=int, default=100, help="Refresh rate in milliseconds (default: 100)")
     parser.add_argument("-n", "--count", type=int, default=8, help="Number of top processes to display (default: 8)")
     parser.add_argument("-1", "--once", action="store_true", help="Print a single snapshot and exit")
+    parser.add_argument("--json", action="store_true", help="Output machine-readable JSON snapshot and exit")
     parser.add_argument("--no-group", action="store_true", help="Show individual process PIDs instead of grouping")
     parser.add_argument("-v", "--version", action="version", version=f"%(prog)s v{__version__}")
     args = parser.parse_args()
+
+    # JSON Machine-Readable Mode
+    if args.json:
+        mem = get_meminfo()
+        procs = get_processes(group_by_name=not args.no_group)[:args.count]
+        payload = {
+            "timestamp": datetime.now().isoformat(),
+            "hostname": socket.gethostname(),
+            "os": SYSTEM_OS,
+            "memory": mem,
+            "top_processes": procs
+        }
+        print(json.dumps(payload, indent=2))
+        return
 
     hostname = socket.gethostname()
     term = TerminalManager()

@@ -64,6 +64,7 @@ ram
 -r, --rate <ms>    Refresh rate in milliseconds (default: 100)
 -n, --count <N>    Number of top processes to display (default: 8)
 -1, --once         Output a single snapshot and exit
+--json             Output machine-readable JSON snapshot and exit
 --no-group         Show individual process PIDs instead of grouping
 -v, --version      Show version number
 ```
