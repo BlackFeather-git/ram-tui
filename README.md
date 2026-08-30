@@ -35,19 +35,21 @@ These 8 account for  3.79 GB (12% of installed RAM)
 ## Features
 
 - **Zero dependencies**: Pure Python 3.6+ standard library.
-- **Cross-platform**: Native `/proc` parsing on Linux, `sysctl`/`vm_stat` on macOS, and Win32 APIs via `ctypes` on Windows.
-- **Real-time & smooth**: Monotonic deadline scheduler (default 100ms) with zero terminal flickering.
+- **Cross-platform**: Native `/proc` parsing on Linux, `sysctl`/`vm_stat` on macOS, and Win32 APIs via `ctypes` on Windows (`GetPerformanceInfo` & Tool Help API).
+- **Accurate memory contracts**: Platform-native metrics with honest semantics (see [AUDIT.md](AUDIT.md)).
+- **Real-time & smooth**: Monotonic deadline scheduler (default 100ms) with zero timing drift.
+- **PID-reuse safe**: Starttime-keyed cache on Linux prevents stale process names on rapid PID reuse.
 - **Process grouping**: Automatically groups multi-process apps (e.g. `brave (12)`) or displays individual PIDs with `1`/`2` hotkeys.
-- **Sanitized rendering**: Strips terminal control characters to prevent ANSI injection.
+- **Sanitized rendering**: Strips terminal control codes and Unicode bidi overrides to prevent ANSI injection.
 - **Automation ready**: Output one-time snapshots with `--once` or machine-readable JSON with `--json`.
 
 ## Supported Platforms
 
 | Platform | System Memory Source | Process Inspection | Notes |
 |---|---|---|---|
-| **Linux** | `/proc/meminfo`, `/proc/swaps` | `/proc/<pid>/statm` | Native ZRAM detection & cached PID name lookups. |
-| **macOS** | `vm_stat`, `sysctl` | `ps` | Native page-size calculation & regex swap extraction. |
-| **Windows** | `GlobalMemoryStatusEx` | Tool Help + `GetProcessMemoryInfo` | Pure `ctypes` Win32 API calls (no `tasklist` shell overhead). |
+| **Linux** | `/proc/meminfo`, `/proc/swaps` | `/proc/<pid>/statm` | Native ZRAM detection & starttime-keyed PID cache. |
+| **macOS** | `vm_stat`, `sysctl` | `ps` | Native page-size calculation & regex swap extraction. Commit is marked N/A. |
+| **Windows** | `GlobalMemoryStatusEx`, `GetPerformanceInfo` | Tool Help + `GetProcessMemoryInfo` | Pure `ctypes` Win32 API calls (no `tasklist` subprocess overhead). |
 
 ## Installation
 
@@ -126,10 +128,10 @@ ram --json
 
 ```json
 {
-  "timestamp": "2026-08-30T23:30:00+05:30",
+  "timestamp": "2026-08-31T00:15:00+05:30",
   "hostname": "my-laptop",
   "os": "Linux",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "memory": {
     "total": 33554432000,
     "available": 28689039360,
@@ -159,11 +161,6 @@ Run the built-in deterministic test suite:
 ```bash
 python3 -m unittest tests/test_ram.py
 ```
-
-## Requirements
-
-- Python 3.6+ on Linux, macOS, or Windows
-- Zero third-party dependencies
 
 ## License
 

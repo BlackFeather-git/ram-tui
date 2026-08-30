@@ -2,7 +2,7 @@
 """
 ram-tui - Lightweight real-time terminal memory monitor for Linux, macOS & Windows.
 
-Author: BlackFeather
+Author: BlackFeather (https://github.com/BlackFeather-git)
 License: MIT
 """
 
@@ -18,45 +18,60 @@ import signal
 import socket
 import sys
 import time
+import shutil
+import heapq
 from datetime import datetime
 
-__version__ = "0.3.2"
+__version__ = "0.4.0"
 SYSTEM_OS = platform.system()
 
-# ANSI is enabled only for an interactive terminal unless explicitly disabled.
-USE_COLOR = (
-    sys.stdout.isatty()
-    and "NO_COLOR" not in os.environ
-    and os.environ.get("TERM", "").lower() != "dumb"
-)
+PAGE_SIZE = 4096
+if SYSTEM_OS == "Linux":
+    try:
+        PAGE_SIZE = int(os.sysconf("SC_PAGE_SIZE"))
+    except (AttributeError, OSError, ValueError):
+        PAGE_SIZE = 4096
 
-if USE_COLOR:
-    C_RESET = "\033[0m"
-    C_BOLD = "\033[1m"
-    C_DIM = "\033[2m"
-    C_CYAN = "\033[38;2;80;200;220m"
-    C_BLUE = "\033[38;2;100;160;255m"
-    C_GREEN = "\033[38;2;75;210;110m"
-    C_YELLOW = "\033[38;2;240;200;80m"
-    C_RED = "\033[38;2;240;90;90m"
-    C_GRAY = "\033[38;2;140;145;155m"
-    C_DARK_GRAY = "\033[38;2;65;70;80m"
-    C_WHITE = "\033[38;2;235;240;245m"
-else:
-    C_RESET = C_BOLD = C_DIM = ""
-    C_CYAN = C_BLUE = C_GREEN = C_YELLOW = C_RED = C_GRAY = C_DARK_GRAY = C_WHITE = ""
+# Process starttime-keyed cache to prevent PID-reuse race conditions
+# Key: (pid, start_time_identifier) -> process_name
+PID_NAME_CACHE = {}
+
+# Unicode bidirectional control characters to strip for terminal integrity
+BIDI_CHARS = set("\u200e\u200f\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069")
+
+
+def should_use_color(is_interactive=True):
+    """Determine whether color output should be enabled based on terminal and flags."""
+    if "NO_COLOR" in os.environ or os.environ.get("TERM", "").lower() == "dumb":
+        return False
+    if not sys.stdout.isatty():
+        return False
+    return is_interactive
+
+
+def get_ansi_palette(enable_color=True):
+    """Returns the ANSI color palette dictionary."""
+    if enable_color:
+        return {
+            "RESET": "\033[0m",
+            "BOLD": "\033[1m",
+            "DIM": "\033[2m",
+            "CYAN": "\033[38;2;80;200;220m",
+            "BLUE": "\033[38;2;100;160;255m",
+            "GREEN": "\033[38;2;75;210;110m",
+            "YELLOW": "\033[38;2;240;200;80m",
+            "RED": "\033[38;2;240;90;90m",
+            "GRAY": "\033[38;2;140;145;155m",
+            "DARK_GRAY": "\033[38;2;65;70;80m",
+            "WHITE": "\033[38;2;235;240;245m",
+        }
+    return {k: "" for k in ["RESET", "BOLD", "DIM", "CYAN", "BLUE", "GREEN", "YELLOW", "RED", "GRAY", "DARK_GRAY", "WHITE"]}
+
 
 BLOCK_FULL = "█"
 BLOCK_TRACK = "░"
 BLOCK_BORDER_L = "["
 BLOCK_BORDER_R = "]"
-
-try:
-    PAGE_SIZE = int(os.sysconf("SC_PAGE_SIZE"))
-except (AttributeError, OSError, ValueError):
-    PAGE_SIZE = 4096
-
-PID_NAME_CACHE = {}
 
 
 def format_bytes(value, precision=2):
@@ -67,14 +82,14 @@ def format_bytes(value, precision=2):
         value = 0
 
     if value < 1024:
-        return "{} B".format(value)
+        return f"{value} B"
     if value < 1024 ** 2:
-        return "{:.{}f} KB".format(value / 1024.0, precision)
+        return f"{value / 1024.0:.{precision}f} KB"
     if value < 1024 ** 3:
-        return "{:.{}f} MB".format(value / (1024.0 ** 2), precision)
+        return f"{value / (1024.0 ** 2):.{precision}f} MB"
     if value < 1024 ** 4:
-        return "{:.{}f} GB".format(value / (1024.0 ** 3), precision)
-    return "{:.{}f} TB".format(value / (1024.0 ** 4), precision)
+        return f"{value / (1024.0 ** 3):.{precision}f} GB"
+    return f"{value / (1024.0 ** 4):.{precision}f} TB"
 
 
 def clamp(value, low, high):
@@ -84,7 +99,7 @@ def clamp(value, low, high):
 def percentage(part, whole):
     """Return a bounded percentage; zero is used when the denominator is unknown."""
     try:
-        if whole <= 0:
+        if whole is None or whole <= 0 or part is None:
             return 0.0
         return clamp((float(part) / float(whole)) * 100.0, 0.0, 100.0)
     except (TypeError, ValueError, ZeroDivisionError):
@@ -92,175 +107,135 @@ def percentage(part, whole):
 
 
 def sanitize_text(value, replacement="~"):
-    """Remove terminal control characters from untrusted process names."""
+    """Remove terminal control characters, ANSI codes, and bidi overrides from process names."""
     if value is None:
         return ""
     text = str(value)
     cleaned = []
     for char in text:
         code = ord(char)
-        if char in ("\n", "\r", "\t") or code < 32 or code == 127 or 0x80 <= code <= 0x9F:
-            cleaned.append(replacement if char not in ("\t",) else " ")
+        # Strip ASCII control codes (0-31, 127), bidi overrides, and DEL
+        if code < 32 or code == 127 or char in BIDI_CHARS:
+            cleaned.append(replacement)
         else:
             cleaned.append(char)
-    return "".join(cleaned).strip()
+    return "".join(cleaned)
 
 
-def normalize_process(name, pid, rss):
-    name = sanitize_text(name) or "unknown"
-    try:
-        pid_int = int(pid)
-    except (TypeError, ValueError):
-        pid_int = 0
-    try:
-        rss_int = max(0, int(rss))
-    except (TypeError, ValueError):
-        rss_int = 0
-    return {
-        "pid": pid_int,
-        "name": name,
-        "rss": rss_int,
-        "count": 1,
-    }
+class TerminalManager:
+    """Manages raw terminal state, cursor visibility, and non-blocking input."""
+    def __init__(self):
+        self.is_tty = sys.stdout.isatty() and sys.stdin.isatty()
+        self.orig_termios = None
+        self.fd = None
 
+        if self.is_tty:
+            try:
+                self.fd = sys.stdin.fileno()
+            except Exception:
+                self.is_tty = False
 
-def aggregate_processes(rows, group_by_name=True):
-    """Aggregate process records and sort deterministically by RSS then name/PID."""
-    groups = {}
-    for row in rows:
-        if not row:
-            continue
-        name = sanitize_text(row.get("name")) or "unknown"
-        pid = int(row.get("pid", 0) or 0)
-        rss = max(0, int(row.get("rss", 0) or 0))
+        if SYSTEM_OS == "Windows":
+            try:
+                kernel32 = ctypes.windll.kernel32
+                kernel32.SetConsoleMode(kernel32.GetStdHandle(-11), 7)
+            except Exception:
+                pass
+        elif self.is_tty and self.fd is not None:
+            try:
+                import termios
+                self.orig_termios = termios.tcgetattr(self.fd)
+            except Exception:
+                self.orig_termios = None
 
-        if group_by_name:
-            key = name
-            if key not in groups:
-                groups[key] = {"name": name, "rss": 0, "count": 0}
-            groups[key]["rss"] += rss
-            groups[key]["count"] += 1
+    def setup_raw(self):
+        if self.is_tty:
+            if SYSTEM_OS != "Windows" and self.orig_termios and self.fd is not None:
+                try:
+                    import tty
+                    tty.setcbreak(self.fd)
+                except Exception:
+                    pass
+            sys.stdout.write("\033[?25l")  # Hide cursor
+            sys.stdout.flush()
+
+    def restore(self):
+        if self.is_tty:
+            sys.stdout.write("\033[?25h\033[0m\n")  # Show cursor & reset styles
+            sys.stdout.flush()
+            if SYSTEM_OS != "Windows" and self.orig_termios and self.fd is not None:
+                try:
+                    import termios
+                    termios.tcsetattr(self.fd, termios.TCSADRAIN, self.orig_termios)
+                except Exception:
+                    pass
+
+    def check_key(self):
+        """Non-blocking key reader across Linux, macOS, and Windows."""
+        if not self.is_tty:
+            return None
+        if SYSTEM_OS == "Windows":
+            try:
+                import msvcrt
+                if msvcrt.kbhit():
+                    ch = msvcrt.getch()
+                    try:
+                        return ch.decode("utf-8", errors="ignore")
+                    except Exception:
+                        return None
+            except Exception:
+                return None
         else:
-            key = pid
-            groups[key] = {
-                "name": "{} [{}]".format(name, pid),
-                "rss": rss,
-                "count": 1,
-                "pid": pid,
-            }
-
-    result = list(groups.values())
-    return sorted(
-        result,
-        key=lambda item: (
-            -int(item.get("rss", 0)),
-            sanitize_text(item.get("name", "")).casefold(),
-            int(item.get("pid", 0) or 0),
-        ),
-    )
+            try:
+                r, _, _ = select.select([sys.stdin], [], [], 0)
+                if r:
+                    return sys.stdin.read(1)
+            except Exception:
+                return None
+        return None
 
 
-def _memory_snapshot(**values):
-    defaults = {
-        "total": 0,
-        "available": 0,
-        "used": 0,
-        "commit_as": 0,
-        "commit_limit": 0,
-        "cached": 0,
-        "swap_used": 0,
-        "swap_total": 0,
-        "swap_desc": "unknown",
-        "valid": True,
-    }
-    defaults.update(values)
-
-    total = max(0, int(defaults["total"] or 0))
-    available = clamp(int(defaults["available"] or 0), 0, total) if total else 0
-    used = clamp(int(defaults["used"] or 0), 0, total) if total else 0
-    defaults["total"] = total
-    defaults["available"] = available
-    defaults["used"] = used
-    defaults["commit_as"] = max(0, int(defaults["commit_as"] or 0))
-    defaults["commit_limit"] = max(0, int(defaults["commit_limit"] or 0))
-    defaults["cached"] = max(0, int(defaults["cached"] or 0))
-    defaults["swap_used"] = max(0, int(defaults["swap_used"] or 0))
-    defaults["swap_total"] = max(0, int(defaults["swap_total"] or 0))
-    defaults["swap_desc"] = sanitize_text(defaults.get("swap_desc")) or "unknown"
-    defaults["valid"] = bool(defaults["valid"])
-    return defaults
-
-
-def parse_linux_meminfo(text):
-    """Parse /proc/meminfo content without assuming every kernel field exists."""
-    info = {}
-    for line in text.splitlines():
-        if ":" not in line:
-            continue
-        key, raw = line.split(":", 1)
-        fields = raw.strip().split()
-        if not fields:
-            continue
-        try:
-            value = int(fields[0])
-        except ValueError:
-            continue
-
-        unit = fields[1].lower() if len(fields) > 1 else ""
-        if unit in ("kb", "kib"):
-            value *= 1024
-        elif unit in ("mb", "mib"):
-            value *= 1024 ** 2
-        elif unit in ("gb", "gib"):
-            value *= 1024 ** 3
-        info[key.strip()] = value
-    return info
-
-
-def _read_text(path):
-    with open(path, "r") as handle:
-        return handle.read()
-
+# ---------------------------------------------------------------------------
+# Platform Memory Collectors
+# ---------------------------------------------------------------------------
 
 def get_meminfo_linux():
-    """Collect Linux memory data from /proc, with explicit best-effort semantics."""
+    """Parses /proc/meminfo and /proc/swaps on Linux."""
+    info = {}
     try:
-        info = parse_linux_meminfo(_read_text("/proc/meminfo"))
-    except (OSError, IOError):
-        return _memory_snapshot(valid=False, swap_desc="unavailable")
+        with open("/proc/meminfo", "r") as f:
+            for line in f:
+                parts = line.split(":")
+                if len(parts) == 2:
+                    key = parts[0].strip()
+                    val_str = parts[1].strip().split()[0]
+                    info[key] = int(val_str) * 1024
+    except Exception:
+        return {"total": 0, "available": 0, "used": 0, "commit_as": 0, "commit_limit": 0, "cached": 0, "swap_used": 0, "swap_total": 0, "swap_desc": "unknown", "valid": False}
 
     total = info.get("MemTotal", 0)
-    if total <= 0:
-        return _memory_snapshot(valid=False, swap_desc="unavailable")
-
     available = info.get("MemAvailable", info.get("MemFree", 0))
     used = max(0, total - available)
-
-    # Cached is deliberately an estimate: Linux documents that several
-    # /proc/meminfo counters overlap and do not necessarily add to total RAM.
-    cached = (
-        info.get("Cached", 0)
-        + info.get("SReclaimable", 0)
-        + info.get("Buffers", 0)
-    )
-
+    commit_as = info.get("Committed_AS", 0)
+    commit_limit = info.get("CommitLimit", total)
+    cached = info.get("Cached", 0) + info.get("Buffers", 0) + info.get("SReclaimable", 0)
     swap_total = info.get("SwapTotal", 0)
     swap_free = info.get("SwapFree", 0)
     swap_used = max(0, swap_total - swap_free)
 
+    # Detect swap type
     has_zram = False
     has_disk = False
     try:
-        swap_text = _read_text("/proc/swaps")
-        for line in swap_text.splitlines()[1:]:
-            fields = line.split()
-            if not fields:
-                continue
-            if "zram" in os.path.basename(fields[0]).lower():
-                has_zram = True
-            else:
-                has_disk = True
-    except (OSError, IOError):
+        with open("/proc/swaps", "r") as f:
+            for line in f.readlines()[1:]:
+                parts = line.split()
+                if parts:
+                    if "zram" in parts[0]:
+                        has_zram = True
+                    else:
+                        has_disk = True
+    except Exception:
         pass
 
     if has_zram and has_disk:
@@ -269,241 +244,265 @@ def get_meminfo_linux():
         swap_desc = "zram swap"
     elif has_disk:
         swap_desc = "disk swap"
-    elif swap_total:
-        swap_desc = "swap present (type unavailable)"
     else:
         swap_desc = "no active swap"
 
-    return _memory_snapshot(
-        total=total,
-        available=available,
-        used=used,
-        commit_as=info.get("Committed_AS", 0),
-        commit_limit=info.get("CommitLimit", 0),
-        cached=cached,
-        swap_used=swap_used,
-        swap_total=swap_total,
-        swap_desc=swap_desc,
-    )
-
-
-class MEMORYSTATUSEX(ctypes.Structure):
-    _fields_ = [
-        ("dwLength", ctypes.c_ulong),
-        ("dwMemoryLoad", ctypes.c_ulong),
-        ("ullTotalPhys", ctypes.c_ulonglong),
-        ("ullAvailPhys", ctypes.c_ulonglong),
-        ("ullTotalPageFile", ctypes.c_ulonglong),
-        ("ullAvailPageFile", ctypes.c_ulonglong),
-        ("ullTotalVirtual", ctypes.c_ulonglong),
-        ("ullAvailVirtual", ctypes.c_ulonglong),
-        ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
-    ]
+    return {
+        "total": total,
+        "available": available,
+        "used": used,
+        "commit_as": commit_as,
+        "commit_limit": commit_limit,
+        "cached": cached,
+        "swap_used": swap_used,
+        "swap_total": swap_total,
+        "swap_desc": swap_desc,
+        "valid": total > 0,
+    }
 
 
 def get_meminfo_windows():
-    """Collect Windows physical memory and commit-limit information."""
+    """Fetches system memory using GlobalMemoryStatusEx and GetPerformanceInfo."""
     try:
-        kernel32 = ctypes.windll.kernel32
+        class MEMORYSTATUSEX(ctypes.Structure):
+            _fields_ = [
+                ("dwLength", ctypes.c_ulong),
+                ("dwMemoryLoad", ctypes.c_ulong),
+                ("ullTotalPhys", ctypes.c_ulonglong),
+                ("ullAvailPhys", ctypes.c_ulonglong),
+                ("ullTotalPageFile", ctypes.c_ulonglong),
+                ("ullAvailPageFile", ctypes.c_ulonglong),
+                ("ullTotalVirtual", ctypes.c_ulonglong),
+                ("ullAvailVirtual", ctypes.c_ulonglong),
+                ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+            ]
+
+        class PERFORMANCE_INFORMATION(ctypes.Structure):
+            _fields_ = [
+                ("cb", ctypes.c_ulong),
+                ("CommitTotal", ctypes.c_size_t),
+                ("CommitLimit", ctypes.c_size_t),
+                ("CommitPeak", ctypes.c_size_t),
+                ("PhysicalTotal", ctypes.c_size_t),
+                ("PhysicalAvailable", ctypes.c_size_t),
+                ("SystemCache", ctypes.c_size_t),
+                ("KernelTotal", ctypes.c_size_t),
+                ("KernelPaged", ctypes.c_size_t),
+                ("KernelNonpaged", ctypes.c_size_t),
+                ("PageSize", ctypes.c_size_t),
+                ("HandleCount", ctypes.c_ulong),
+                ("ProcessCount", ctypes.c_ulong),
+                ("ThreadCount", ctypes.c_ulong),
+            ]
+
         stat = MEMORYSTATUSEX()
         stat.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
-        if not kernel32.GlobalMemoryStatusEx(ctypes.byref(stat)):
-            raise ctypes.WinError()
+        ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat))
 
-        total = int(stat.ullTotalPhys)
-        available = int(stat.ullAvailPhys)
+        total = stat.ullTotalPhys
+        available = stat.ullAvailPhys
         used = max(0, total - available)
 
-        # Windows' total page-file field includes physical RAM. Therefore
-        # totalPageFile - totalPhys is only the configured paging capacity.
-        pagefile_total = max(0, int(stat.ullTotalPageFile) - total)
-        commit_as = max(0, int(stat.ullTotalPageFile) - int(stat.ullAvailPageFile))
-        commit_limit = int(stat.ullTotalPageFile)
+        # Get system-wide commit metrics via GetPerformanceInfo (PSAPI / Kernel32)
+        commit_as = 0
+        commit_limit = 0
+        cached = 0
+        try:
+            perf = PERFORMANCE_INFORMATION()
+            perf.cb = ctypes.sizeof(PERFORMANCE_INFORMATION)
+            # Try kernel32 first, fallback to psapi
+            psapi = getattr(ctypes.windll.kernel32, "K32GetPerformanceInfo", None) or getattr(ctypes.windll.psapi, "GetPerformanceInfo", None)
+            if psapi and psapi(ctypes.byref(perf), perf.cb):
+                page_size = perf.PageSize or 4096
+                commit_as = perf.CommitTotal * page_size
+                commit_limit = perf.CommitLimit * page_size
+                cached = perf.SystemCache * page_size
+        except Exception:
+            commit_as = max(0, stat.ullTotalPageFile - stat.ullAvailPageFile)
+            commit_limit = stat.ullTotalPageFile
 
-        # GlobalMemoryStatusEx does not expose actual pagefile residency.
-        # Do not fabricate a "pagefile used" value from commit - physical used.
-        return _memory_snapshot(
-            total=total,
-            available=available,
-            used=used,
-            commit_as=commit_as,
-            commit_limit=commit_limit,
-            cached=0,
-            swap_used=0,
-            swap_total=pagefile_total,
-            swap_desc="pagefile capacity (usage unavailable)",
-        )
-    except (AttributeError, OSError, ctypes.error):
-        return _memory_snapshot(valid=False, swap_desc="unavailable")
+        swap_total = max(0, stat.ullTotalPageFile - total)
+        swap_desc = "pagefile capacity"
 
-
-def _parse_macos_size(value):
-    match = re.match(r"^\s*([0-9]+(?:\.[0-9]+)?)\s*([KMGTP]?)B?\s*$", value, re.I)
-    if not match:
-        return 0
-    number = float(match.group(1))
-    unit = match.group(2).upper()
-    multipliers = {
-        "": 1,
-        "K": 1024,
-        "M": 1024 ** 2,
-        "G": 1024 ** 3,
-        "T": 1024 ** 4,
-        "P": 1024 ** 5,
-    }
-    return int(number * multipliers[unit])
-
-
-def _run_command(args):
-    # No shell is used; arguments are passed directly to the executable.
-    return subprocess.check_output(
-        args,
-        universal_newlines=True,
-        stderr=subprocess.DEVNULL,
-    )
+        return {
+            "total": total,
+            "available": available,
+            "used": used,
+            "commit_as": commit_as,
+            "commit_limit": commit_limit,
+            "cached": cached,
+            "swap_used": None,  # Not claimed because Windows does not expose exact pagefile residency
+            "swap_total": swap_total,
+            "swap_desc": swap_desc,
+            "valid": total > 0,
+        }
+    except Exception:
+        return {"total": 0, "available": 0, "used": 0, "commit_as": 0, "commit_limit": 0, "cached": 0, "swap_used": None, "swap_total": 0, "swap_desc": "unknown", "valid": False}
 
 
 def get_meminfo_darwin():
-    """Collect macOS memory statistics using Apple's standard system tools."""
+    """Fetches memory statistics on macOS using sysctl and vm_stat."""
     try:
-        total = int(_run_command(["sysctl", "-n", "hw.memsize"]).strip())
-        vm_out = _run_command(["vm_stat"])
+        total_str = subprocess.check_output(["sysctl", "-n", "hw.memsize"], text=True, timeout=1.0).strip()
+        total = int(total_str)
 
+        vm_out = subprocess.check_output(["vm_stat"], text=True, timeout=1.0)
         page_size = 4096
-        pages = {}
+        free_pages = active_pages = inactive_pages = speculative_pages = wired_pages = compressed_pages = 0
         for line in vm_out.splitlines():
             if "page size of" in line:
-                match = re.search(r"(\d+)\s*bytes", line)
-                if match:
-                    page_size = int(match.group(1))
-                continue
-            if ":" not in line:
-                continue
-            key, raw = line.split(":", 1)
-            digits = re.sub(r"[^\d]", "", raw)
-            if digits:
-                pages[key.strip()] = int(digits)
+                m = re.search(r"(\d+)\s*bytes", line)
+                if m:
+                    page_size = int(m.group(1))
+            elif "Pages free:" in line:
+                free_pages = int(re.sub(r"[^\d]", "", line.split(":")[1]))
+            elif "Pages active:" in line:
+                active_pages = int(re.sub(r"[^\d]", "", line.split(":")[1]))
+            elif "Pages inactive:" in line:
+                inactive_pages = int(re.sub(r"[^\d]", "", line.split(":")[1]))
+            elif "Pages speculative:" in line:
+                speculative_pages = int(re.sub(r"[^\d]", "", line.split(":")[1]))
+            elif "Pages wired down:" in line:
+                wired_pages = int(re.sub(r"[^\d]", "", line.split(":")[1]))
+            elif "Pages occupied by compressor:" in line:
+                compressed_pages = int(re.sub(r"[^\d]", "", line.split(":")[1]))
 
-        free = pages.get("Pages free", 0)
-        inactive = pages.get("Pages inactive", 0)
-        speculative = pages.get("Pages speculative", 0)
-        available = min(total, (free + inactive + speculative) * page_size)
-
-        # macOS does not expose Linux-style "used" and "available" semantics.
-        # This is a best-effort approximation from vm_stat.
+        available = (free_pages + inactive_pages + speculative_pages) * page_size
         used = max(0, total - available)
+        cached = (inactive_pages + speculative_pages) * page_size
 
-        cached = (inactive + speculative) * page_size
-
-        swap_used = 0
-        swap_total = 0
+        # Swap metrics
+        swap_used = swap_total = 0
         try:
-            swap_text = _run_command(["sysctl", "-n", "vm.swapusage"])
-            for key, value, unit in re.findall(
-                r"(\w+)\s*=\s*([0-9.]+)\s*([KMGTP]?)",
-                swap_text,
-                re.I,
-            ):
-                size = _parse_macos_size("{}{}".format(value, unit))
-                if key.lower() == "total":
-                    swap_total = size
-                elif key.lower() == "used":
-                    swap_used = size
-        except (OSError, IOError):
+            swap_str = subprocess.check_output(["sysctl", "-n", "vm.swapusage"], text=True, timeout=1.0).strip()
+            matches = re.findall(r"(\w+)\s*=\s*([0-9.]+)\s*([KMGTP]?)", swap_str, re.IGNORECASE)
+            units = {"K": 1024, "M": 1024**2, "G": 1024**3, "T": 1024**4, "P": 1024**5}
+            for k, val, unit in matches:
+                mult = units.get(unit.upper(), 1024**2)
+                bytes_num = int(float(val) * mult)
+                if k.lower() == "total":
+                    swap_total = bytes_num
+                elif k.lower() == "used":
+                    swap_used = bytes_num
+        except Exception:
             pass
 
-        return _memory_snapshot(
-            total=total,
-            available=available,
-            used=used,
-            commit_as=used + swap_used,
-            commit_limit=total + swap_total,
-            cached=cached,
-            swap_used=swap_used,
-            swap_total=swap_total,
-            swap_desc="compressed RAM + disk swap",
-        )
-    except (OSError, IOError, ValueError, subprocess.CalledProcessError, subprocess.SubprocessError):
-        return _memory_snapshot(valid=False, swap_desc="unavailable")
-
+        return {
+            "total": total,
+            "available": available,
+            "used": used,
+            "commit_as": None,  # macOS does not expose commit limit
+            "commit_limit": None,
+            "cached": cached,
+            "swap_used": swap_used,
+            "swap_total": swap_total,
+            "swap_desc": "compressed RAM + disk swap",
+            "valid": total > 0,
+        }
+    except Exception:
+        return {"total": 0, "available": 0, "used": 0, "commit_as": None, "commit_limit": None, "cached": 0, "swap_used": 0, "swap_total": 0, "swap_desc": "unknown", "valid": False}
 
 
 def get_meminfo():
+    """Cross-platform memory dispatcher."""
     if SYSTEM_OS == "Linux":
         return get_meminfo_linux()
-    if SYSTEM_OS == "Windows":
+    elif SYSTEM_OS == "Windows":
         return get_meminfo_windows()
-    if SYSTEM_OS == "Darwin":
+    elif SYSTEM_OS == "Darwin":
         return get_meminfo_darwin()
-    return _memory_snapshot(valid=False, swap_desc="unsupported OS")
+    return get_meminfo_linux()
 
 
-def _linux_processes():
-    rows = []
+# ---------------------------------------------------------------------------
+# Platform Process Collectors
+# ---------------------------------------------------------------------------
+
+def get_processes_linux(group_by_name=True, limit=8):
+    """Scans Linux /proc with starttime-keyed cache to eliminate PID-reuse bugs."""
+    global PID_NAME_CACHE
+    procs = {}
+
     try:
-        pids = [name for name in os.listdir("/proc") if name.isdigit()]
-    except OSError:
-        return rows
+        pids = [p for p in os.listdir("/proc") if p.isdigit()]
+    except Exception:
+        return []
 
-    current = set(pids)
-    stale = [pid for pid in PID_NAME_CACHE if pid not in current]
-    for pid in stale:
-        PID_NAME_CACHE.pop(pid, None)
+    valid_keys = set()
 
     for pid in pids:
         try:
-            with open("/proc/{}/statm".format(pid), "r") as handle:
-                fields = handle.read().split()
-            if len(fields) < 2:
-                continue
-            rss = int(fields[1]) * PAGE_SIZE
-            if rss <= 0:
-                continue
+            # 1. Read start time via /proc/[pid] stat mtime or stat field 22 to prevent reuse bugs
+            try:
+                proc_stat = os.stat(f"/proc/{pid}")
+                start_id = proc_stat.st_mtime_ns if hasattr(proc_stat, "st_mtime_ns") else int(proc_stat.st_mtime * 1e9)
+            except Exception:
+                start_id = 0
 
-            name = PID_NAME_CACHE.get(pid)
-            if not name:
+            cache_key = (pid, start_id)
+            valid_keys.add(cache_key)
+
+            # 2. Fast single-file RSS read
+            with open(f"/proc/{pid}/statm", "r") as f:
+                fields = f.read().split()
+                if len(fields) < 2:
+                    continue
+                rss_bytes = int(fields[1]) * PAGE_SIZE
+                if rss_bytes <= 0:
+                    continue
+
+            # 3. Retrieve or look up process name
+            comm = PID_NAME_CACHE.get(cache_key)
+            if not comm:
                 try:
-                    name = _read_text("/proc/{}/comm".format(pid)).strip()
-                except (OSError, IOError):
-                    name = None
+                    with open(f"/proc/{pid}/comm", "r") as f:
+                        comm = f.read().strip()
+                except Exception:
+                    pass
 
-                if not name:
+                if not comm:
                     try:
-                        with open("/proc/{}/cmdline".format(pid), "rb") as handle:
-                            raw = handle.read().decode("utf-8", "replace")
-                        command = raw.replace("\x00", " ").strip()
-                        if command:
-                            name = os.path.basename(command.split()[0])
-                    except (OSError, IOError):
-                        name = None
+                        with open(f"/proc/{pid}/cmdline", "rb") as f:
+                            cmd = f.read().decode(errors="ignore").replace("\x00", " ").strip()
+                            if cmd:
+                                comm = os.path.basename(cmd.split()[0])
+                    except Exception:
+                        pass
 
-                PID_NAME_CACHE[pid] = sanitize_text(name) or "PID {}".format(pid)
+                comm = sanitize_text(comm or f"PID {pid}")
+                PID_NAME_CACHE[cache_key] = comm
 
-            rows.append(normalize_process(name, pid, rss))
-        except (OSError, IOError, ValueError, OverflowError):
+            if group_by_name:
+                if comm in procs:
+                    procs[comm]["rss"] += rss_bytes
+                    procs[comm]["count"] += 1
+                else:
+                    procs[comm] = {"name": comm, "rss": rss_bytes, "count": 1, "pid": None}
+            else:
+                procs[pid] = {"name": f"{comm} [{pid}]", "rss": rss_bytes, "count": 1, "pid": int(pid)}
+
+        except (PermissionError, ProcessLookupError, FileNotFoundError, ValueError):
             continue
-    return rows
+        except Exception:
+            continue
+
+    # Purge dead processes from cache
+    PID_NAME_CACHE = {k: v for k, v in PID_NAME_CACHE.items() if k in valid_keys}
+
+    # Deterministic top-N extraction
+    return heapq.nlargest(limit, procs.values(), key=lambda x: (x["rss"], x["name"], x.get("pid") or 0))
 
 
-def _windows_processes():
-    """Enumerate Windows processes without invoking tasklist or a shell."""
-    rows = []
+def get_processes_windows(group_by_name=True, limit=8):
+    """Scans processes on Windows using Tool Help API and GetProcessMemoryInfo."""
+    procs = {}
     try:
-        kernel32 = ctypes.windll.kernel32
-        psapi = ctypes.windll.psapi
-
-        TH32CS_SNAPPROCESS = 0x00000002
-        PROCESS_QUERY_INFORMATION = 0x0400
-        PROCESS_VM_READ = 0x0010
-        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-        INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
-
         class PROCESSENTRY32W(ctypes.Structure):
             _fields_ = [
                 ("dwSize", ctypes.c_ulong),
                 ("cntUsage", ctypes.c_ulong),
                 ("th32ProcessID", ctypes.c_ulong),
-                ("th32DefaultHeapID", ctypes.POINTER(ctypes.c_ulong)),
+                ("th32DefaultHeapID", ctypes.c_void_p),  # Correct ULONG_PTR ABI
                 ("th32ModuleID", ctypes.c_ulong),
                 ("cntThreads", ctypes.c_ulong),
                 ("th32ParentProcessID", ctypes.c_ulong),
@@ -526,460 +525,319 @@ def _windows_processes():
                 ("PeakPagefileUsage", ctypes.c_size_t),
             ]
 
-        kernel32.CreateToolhelp32Snapshot.argtypes = [ctypes.c_ulong, ctypes.c_ulong]
-        kernel32.CreateToolhelp32Snapshot.restype = ctypes.c_void_p
-        kernel32.Process32FirstW.argtypes = [ctypes.c_void_p, ctypes.POINTER(PROCESSENTRY32W)]
-        kernel32.Process32FirstW.restype = ctypes.c_int
-        kernel32.Process32NextW.argtypes = [ctypes.c_void_p, ctypes.POINTER(PROCESSENTRY32W)]
-        kernel32.Process32NextW.restype = ctypes.c_int
-        kernel32.OpenProcess.argtypes = [ctypes.c_ulong, ctypes.c_int, ctypes.c_ulong]
-        kernel32.OpenProcess.restype = ctypes.c_void_p
-        kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
-        kernel32.CloseHandle.restype = ctypes.c_int
+        k32 = ctypes.windll.kernel32
+        psapi = getattr(k32, "K32GetProcessMemoryInfo", None) or getattr(ctypes.windll.psapi, "GetProcessMemoryInfo", None)
+        h_snap = k32.CreateToolhelp32Snapshot(0x00000002, 0)
+        if h_snap == -1:
+            return []
 
-        try:
-            psapi.GetProcessMemoryInfo.argtypes = [
-                ctypes.c_void_p,
-                ctypes.POINTER(PROCESS_MEMORY_COUNTERS),
-                ctypes.c_ulong,
-            ]
-            psapi.GetProcessMemoryInfo.restype = ctypes.c_int
-        except AttributeError:
-            return rows
+        pe = PROCESSENTRY32W()
+        pe.dwSize = ctypes.sizeof(PROCESSENTRY32W)
 
-        snapshot = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
-        if not snapshot or snapshot == INVALID_HANDLE_VALUE:
-            return rows
+        if k32.Process32FirstW(h_snap, ctypes.byref(pe)):
+            while True:
+                pid = pe.th32ProcessID
+                name = sanitize_text(pe.szExeFile)
+                if pid > 0:
+                    h_proc = k32.OpenProcess(0x0400 | 0x0010, False, pid)  # PROCESS_QUERY_INFORMATION | PROCESS_VM_READ
+                    if h_proc:
+                        try:
+                            pmc = PROCESS_MEMORY_COUNTERS()
+                            pmc.cb = ctypes.sizeof(PROCESS_MEMORY_COUNTERS)
+                            if psapi and psapi(h_proc, ctypes.byref(pmc), pmc.cb):
+                                rss_bytes = pmc.WorkingSetSize
+                                if rss_bytes > 0:
+                                    if group_by_name:
+                                        if name in procs:
+                                            procs[name]["rss"] += rss_bytes
+                                            procs[name]["count"] += 1
+                                        else:
+                                            procs[name] = {"name": name, "rss": rss_bytes, "count": 1, "pid": None}
+                                    else:
+                                        procs[pid] = {"name": f"{name} [{pid}]", "rss": rss_bytes, "count": 1, "pid": pid}
+                        finally:
+                            k32.CloseHandle(h_proc)
 
-        try:
-            entry = PROCESSENTRY32W()
-            entry.dwSize = ctypes.sizeof(entry)
-            ok = kernel32.Process32FirstW(snapshot, ctypes.byref(entry))
-            while ok:
-                pid = int(entry.th32ProcessID)
-                name = sanitize_text(entry.szExeFile) or "unknown"
-                handle = kernel32.OpenProcess(
-                    PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ,
-                    0,
-                    pid,
-                )
-                if not handle:
-                    handle = kernel32.OpenProcess(
-                        PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
-                        0,
-                        pid,
-                    )
+                if not k32.Process32NextW(h_snap, ctypes.byref(pe)):
+                    break
 
-                if handle:
-                    try:
-                        counters = PROCESS_MEMORY_COUNTERS()
-                        counters.cb = ctypes.sizeof(counters)
-                        if psapi.GetProcessMemoryInfo(
-                            handle, ctypes.byref(counters), counters.cb
-                        ):
-                            rows.append(
-                                normalize_process(name, pid, int(counters.WorkingSetSize))
-                            )
-                    finally:
-                        kernel32.CloseHandle(handle)
+        k32.CloseHandle(h_snap)
+    except Exception:
+        pass
 
-                ok = kernel32.Process32NextW(snapshot, ctypes.byref(entry))
-        finally:
-            kernel32.CloseHandle(snapshot)
-    except (AttributeError, OSError, ValueError, TypeError, ctypes.error):
-        return rows
-    return rows
+    return heapq.nlargest(limit, procs.values(), key=lambda x: (x["rss"], x["name"], x.get("pid") or 0))
 
 
-def _darwin_processes():
-    """Use sysctl KERN_PROC on macOS to avoid spawning ps once per refresh."""
-    # The packed kinfo_proc layout differs between macOS architectures and
-    # releases; using ps here is safer than guessing an ABI layout.
+def get_processes_darwin(group_by_name=True, limit=8):
+    """Scans processes on macOS using ps."""
+    procs = {}
     try:
-        output = _run_command(["ps", "-axo", "pid,rss,comm"])
-    except (OSError, IOError, ValueError, subprocess.CalledProcessError, subprocess.SubprocessError):
-        return []
+        output = subprocess.check_output(["ps", "-axo", "pid,rss,comm"], text=True, timeout=1.0, errors="ignore")
+        for line in output.splitlines()[1:]:
+            parts = line.strip().split(maxsplit=2)
+            if len(parts) == 3 and parts[1].isdigit():
+                pid = int(parts[0])
+                rss_bytes = int(parts[1]) * 1024
+                comm = sanitize_text(os.path.basename(parts[2]))
+                if rss_bytes <= 0:
+                    continue
 
-    rows = []
-    for line in output.splitlines()[1:]:
-        parts = line.strip().split(maxsplit=2)
-        if len(parts) != 3 or not parts[0].isdigit() or not parts[1].isdigit():
-            continue
-        try:
-            pid = int(parts[0])
-            rss = int(parts[1]) * 1024
-        except ValueError:
-            continue
-        name = os.path.basename(parts[2])
-        rows.append(normalize_process(name, pid, rss))
-    return rows
+                if group_by_name:
+                    if comm in procs:
+                        procs[comm]["rss"] += rss_bytes
+                        procs[comm]["count"] += 1
+                    else:
+                        procs[comm] = {"name": comm, "rss": rss_bytes, "count": 1, "pid": None}
+                else:
+                    procs[pid] = {"name": f"{comm} [{pid}]", "rss": rss_bytes, "count": 1, "pid": pid}
+    except Exception:
+        pass
+
+    return heapq.nlargest(limit, procs.values(), key=lambda x: (x["rss"], x["name"], x.get("pid") or 0))
 
 
-def get_processes(group_by_name=True):
+def get_processes(group_by_name=True, limit=8):
+    """Cross-platform process dispatcher."""
     if SYSTEM_OS == "Linux":
-        rows = _linux_processes()
+        return get_processes_linux(group_by_name=group_by_name, limit=limit)
     elif SYSTEM_OS == "Windows":
-        rows = _windows_processes()
+        return get_processes_windows(group_by_name=group_by_name, limit=limit)
     elif SYSTEM_OS == "Darwin":
-        rows = _darwin_processes()
-    else:
-        rows = []
-    return aggregate_processes(rows, group_by_name)
+        return get_processes_darwin(group_by_name=group_by_name, limit=limit)
+    return get_processes_linux(group_by_name=group_by_name, limit=limit)
 
 
-class TerminalManager:
-    """Small terminal-state manager with safe cleanup and non-blocking input."""
-    def __init__(self):
-        self.is_tty = bool(sys.stdout.isatty() and sys.stdin.isatty())
-        self.orig_termios = None
-        self.fd = None
-        self.raw_enabled = False
+# ---------------------------------------------------------------------------
+# Rendering Functions
+# ---------------------------------------------------------------------------
 
-        if self.is_tty:
-            try:
-                self.fd = sys.stdin.fileno()
-            except (OSError, IOError, ValueError):
-                self.is_tty = False
-
-        if SYSTEM_OS != "Windows" and self.is_tty:
-            try:
-                import termios
-                self.orig_termios = termios.tcgetattr(self.fd)
-            except (ImportError, OSError, IOError):
-                self.orig_termios = None
-
-    def setup_raw(self):
-        if not self.is_tty:
-            return
-        if SYSTEM_OS != "Windows" and self.orig_termios is not None:
-            try:
-                import tty
-                tty.setcbreak(self.fd)
-                self.raw_enabled = True
-            except (ImportError, OSError, IOError):
-                pass
-        try:
-            sys.stdout.write("\033[?25l")
-            sys.stdout.flush()
-        except (OSError, IOError):
-            pass
-
-    def restore(self):
-        if not self.is_tty:
-            return
-        if SYSTEM_OS != "Windows" and self.orig_termios is not None:
-            try:
-                import termios
-                termios.tcsetattr(self.fd, termios.TCSADRAIN, self.orig_termios)
-            except (ImportError, OSError, IOError):
-                pass
-        try:
-            sys.stdout.write("\033[?25h{}".format(C_RESET))
-            sys.stdout.flush()
-        except (OSError, IOError):
-            pass
-        self.raw_enabled = False
-
-    def check_key(self):
-        if not self.is_tty:
-            return None
-        if SYSTEM_OS == "Windows":
-            try:
-                import msvcrt
-                if not msvcrt.kbhit():
-                    return None
-                ch = msvcrt.getwch()
-                if ch in ("\x00", "\xe0"):
-                    # Consume the second byte of an extended key sequence.
-                    if msvcrt.kbhit():
-                        msvcrt.getwch()
-                    return None
-                return ch
-            except (ImportError, OSError):
-                return None
-
-        try:
-            readable, _, _ = select.select([self.fd], [], [], 0)
-            if readable:
-                return os.read(self.fd, 1).decode("utf-8", "ignore")
-        except (OSError, IOError, ValueError):
-            return None
-        return None
-
-
-def render_bar(ratio, width=42):
-    ratio = clamp(float(ratio), 0.0, 1.0)
-    width = max(1, int(width))
-    filled = int(round(width * ratio))
-    empty = width - filled
+def render_bar(ratio, width=42, colors=None):
+    """Renders usage bar with dynamic width and color scaling."""
+    colors = colors or get_ansi_palette(False)
+    ratio = clamp(ratio, 0.0, 1.0)
+    filled_len = int(round(width * ratio))
+    empty_len = width - filled_len
 
     if ratio < 0.60:
-        fill_color = C_GREEN
+        fill_color = colors["GREEN"]
     elif ratio < 0.85:
-        fill_color = C_YELLOW
+        fill_color = colors["YELLOW"]
     else:
-        fill_color = C_RED
+        fill_color = colors["RED"]
 
-    return (
-        "{}{}{}{}{}{}{}{}".format(
-            C_GRAY, BLOCK_BORDER_L, C_RESET,
-            fill_color, BLOCK_FULL * filled, C_RESET,
-            C_DARK_GRAY + BLOCK_TRACK * empty + C_RESET,
-            C_GRAY + BLOCK_BORDER_R + C_RESET,
-        )
-    )
+    bar_filled = f"{fill_color}{BLOCK_FULL * filled_len}{colors['RESET']}"
+    bar_empty = f"{colors['DARK_GRAY']}{BLOCK_TRACK * empty_len}{colors['RESET']}"
+    return f"{colors['GRAY']}{BLOCK_BORDER_L}{colors['RESET']}{bar_filled}{bar_empty}{colors['GRAY']}{BLOCK_BORDER_R}{colors['RESET']}"
 
 
-def render_mini_bar(ratio, width=16):
-    ratio = clamp(float(ratio), 0.0, 1.0)
-    width = max(1, int(width))
-    filled = int(round(width * ratio))
-    return "{}{}{}{}".format(
-        C_GREEN, BLOCK_FULL * filled, C_RESET,
-        C_DARK_GRAY + BLOCK_TRACK * (width - filled) + C_RESET,
-    )
+def render_mini_bar(ratio, width=16, colors=None):
+    """Renders proportional mini-bars."""
+    colors = colors or get_ansi_palette(False)
+    ratio = clamp(ratio, 0.0, 1.0)
+    filled_len = int(round(width * ratio))
+    empty_len = width - filled_len
+    bar_filled = f"{colors['GREEN']}{BLOCK_FULL * filled_len}{colors['RESET']}"
+    bar_empty = f"{colors['DARK_GRAY']}{BLOCK_TRACK * empty_len}{colors['RESET']}"
+    return f"{bar_filled}{bar_empty}"
 
 
-def terminal_width(default=80):
-    try:
-        return max(20, int(os.get_terminal_size().columns))
-    except (OSError, IOError, AttributeError):
-        try:
-            return max(20, int(os.environ.get("COLUMNS", default)))
-        except (TypeError, ValueError):
-            return default
-
-
-def build_snapshot(group_procs=True, proc_count=8):
-    mem = get_meminfo()
-    processes = get_processes(group_procs)[:proc_count]
-    return {
-        "timestamp": datetime.now().astimezone().isoformat(),
-        "hostname": socket.gethostname(),
-        "os": SYSTEM_OS,
-        "version": __version__,
-        "memory": mem,
-        "top_processes": processes,
-    }
-
-
-def render_snapshot(snapshot, paused=False):
-    mem = snapshot["memory"]
-    total = int(mem.get("total", 0))
-    used = int(mem.get("used", 0))
-    available = int(mem.get("available", 0))
-    commit_as = int(mem.get("commit_as", 0))
-    commit_limit = int(mem.get("commit_limit", 0))
-    cached = int(mem.get("cached", 0))
-    swap_used = int(mem.get("swap_used", 0))
-    swap_total = int(mem.get("swap_total", 0))
-    processes = snapshot["top_processes"]
-
-    used_pct = percentage(used, total)
-    commit_pct = percentage(commit_as, commit_limit)
-    proc_sum = sum(int(item.get("rss", 0)) for item in processes)
-    proc_pct = percentage(proc_sum, total)
-
-    cols = terminal_width()
-    bar_width = clamp(cols - 20, 20, 42)
-    hostname = sanitize_text(snapshot.get("hostname")) or "unknown"
+def render_snapshot(mem, procs, group_procs=True, paused=False, enable_color=True):
+    """Renders full memory and process screen into a formatted text string."""
+    colors = get_ansi_palette(enable_color)
+    hostname = sanitize_text(socket.gethostname())
     now_str = datetime.now().strftime("%a %H:%M:%S")
 
-    lines = [
-        "{}{}RAM USAGE{} {}—{} {}{}{}  {}{}{}".format(
-            C_CYAN, C_BOLD, C_RESET, C_GRAY, C_RESET,
-            C_WHITE, hostname, C_RESET, C_GRAY, now_str, C_RESET
-        )
-    ]
+    total = mem.get("total", 0)
+    available = mem.get("available", 0)
+    used = mem.get("used", 0)
+    used_pct = percentage(used, total)
+
+    cols = shutil.get_terminal_size((80, 24)).columns
+    bar_width = min(42, max(20, cols - 20))
+
+    lines = []
+
+    # 1. Header
+    header = f"{colors['CYAN']}{colors['BOLD']}RAM USAGE{colors['RESET']} {colors['GRAY']}—{colors['RESET']} {colors['WHITE']}{hostname}{colors['RESET']}  {colors['GRAY']}{now_str}{colors['RESET']}"
     if paused:
-        lines[0] += "  {}[PAUSED]{}".format(C_YELLOW, C_RESET)
+        header += f"  {colors['YELLOW']}[PAUSED]{colors['RESET']}"
+    lines.append(header)
 
-    lines.append("{} {}".format(render_bar(used_pct / 100.0, bar_width), "{:.1f}%".format(used_pct)))
+    # 2. Main Bar
+    bar_str = render_bar(used / total if total > 0 else 0, width=bar_width, colors=colors)
+    pct_color = colors["GREEN"] if used_pct < 60 else (colors["YELLOW"] if used_pct < 85 else colors["RED"])
+    lines.append(f"{bar_str} {pct_color}{colors['BOLD']}{used_pct:.1f}%{colors['RESET']}")
     lines.append("")
 
+    # 3. Memory Metrics Table
     lines.append(
-        "{}{}Used{}    {}{:<10}{} {}{}Available{}  {}{:<10}{} {}{}Total{}   {}{}".format(
-            C_WHITE, C_BOLD, C_RESET, C_GREEN, format_bytes(used), C_RESET,
-            C_WHITE, C_BOLD, C_RESET, C_GREEN, format_bytes(available), C_RESET,
-            C_WHITE, C_BOLD, C_RESET, C_WHITE, format_bytes(total),
-        ) + C_RESET
-    )
-    lines.append(
-        "{}{}Commit{}  {} / {}  {}({:.0f}% of commit limit){}".format(
-            C_WHITE, C_BOLD, C_RESET,
-            format_bytes(commit_as), format_bytes(commit_limit),
-            C_GRAY, commit_pct, C_RESET,
-        )
-    )
-    if cached > 0 or SYSTEM_OS == "Linux":
-        lines.append(
-            "{}{}Cached{}  {:<10} {}(cache + reclaimable estimate){}".format(
-                C_WHITE, C_BOLD, C_RESET, format_bytes(cached), C_GRAY, C_RESET
-            )
-        )
-    lines.append(
-        "{}{}Swap{}    {} / {}   {}({}){}".format(
-            C_WHITE, C_BOLD, C_RESET,
-            format_bytes(swap_used), format_bytes(swap_total),
-            C_GRAY, mem.get("swap_desc", "unknown"), C_RESET,
-        )
-    )
-    lines.append("")
-
-    grouped = True
-    if processes and "count" in processes[0]:
-        grouped = not any("pid" in item for item in processes)
-    mode = "RESIDENT SET" if grouped else "PROCESS PID"
-    lines.append(
-        "{}{}TOP {} PROCESSES BY {}{}".format(
-            C_CYAN, C_BOLD, len(processes), mode, C_RESET
-        )
+        f"{colors['WHITE']}{colors['BOLD']}Used{colors['RESET']}    {colors['GREEN']}{format_bytes(used):<10}{colors['RESET']} "
+        f"{colors['WHITE']}{colors['BOLD']}Available{colors['RESET']}  {colors['GREEN']}{format_bytes(available):<10}{colors['RESET']} "
+        f"{colors['WHITE']}{colors['BOLD']}Total{colors['RESET']}   {colors['WHITE']}{format_bytes(total)}{colors['RESET']}"
     )
 
-    max_rss = max([int(item.get("rss", 0)) for item in processes] or [1])
-    for item in processes:
-        count = int(item.get("count", 1) or 1)
-        count_text = " ({})".format(count) if grouped and count > 1 else ""
-        name = sanitize_text(item.get("name")) or "unknown"
-        full_name = name + count_text
-        if len(full_name) > 19:
-            full_name = full_name[:18] + "~"
-        name_display = full_name.ljust(19)
+    # Commit metric
+    if mem.get("commit_as") is not None and mem.get("commit_limit") is not None:
+        commit_as = mem["commit_as"]
+        commit_limit = mem["commit_limit"]
+        commit_pct = percentage(commit_as, commit_limit)
+        lines.append(f"{colors['WHITE']}{colors['BOLD']}Commit{colors['RESET']}  {format_bytes(commit_as)} / {format_bytes(commit_limit)}  {colors['GRAY']}({commit_pct:.0f}% of commit limit){colors['RESET']}")
+    else:
+        lines.append(f"{colors['WHITE']}{colors['BOLD']}Commit{colors['RESET']}  N/A  {colors['GRAY']}(unsupported on macOS){colors['RESET']}")
 
-        rss = int(item.get("rss", 0) or 0)
-        lines.append(
-            "{}{}{} {}{}{}  {}  {}{:>4.1f}%{}".format(
-                C_WHITE, name_display, C_RESET,
-                C_GREEN, format_bytes(rss, 1).rjust(9), C_RESET,
-                render_mini_bar(rss / float(max_rss), 16),
-                C_GRAY, percentage(rss, total), C_RESET,
-            )
-        )
+    # Cache metric
+    cached_val = mem.get("cached", 0)
+    lines.append(f"{colors['WHITE']}{colors['BOLD']}Cached{colors['RESET']}  {format_bytes(cached_val):<10} {colors['GRAY']}(cache + reclaimable estimate){colors['RESET']}")
+
+    # Swap metric
+    swap_used = mem.get("swap_used")
+    swap_total = mem.get("swap_total", 0)
+    swap_desc = mem.get("swap_desc", "")
+    if swap_used is not None:
+        lines.append(f"{colors['WHITE']}{colors['BOLD']}Swap{colors['RESET']}    {format_bytes(swap_used)} / {format_bytes(swap_total)}   {colors['GRAY']}({swap_desc}){colors['RESET']}")
+    else:
+        lines.append(f"{colors['WHITE']}{colors['BOLD']}Swap{colors['RESET']}    {format_bytes(swap_total)} capacity   {colors['GRAY']}({swap_desc}){colors['RESET']}")
 
     lines.append("")
-    lines.append(
-        "{}These {} account for  {}{}{} ({:.0f}% of installed RAM){}".format(
-            C_GRAY, len(processes), C_WHITE, format_bytes(proc_sum),
-            C_RESET, proc_pct, C_RESET
-        )
-    )
-    if not mem.get("valid", True):
-        lines.append("{}Warning: memory metrics are unavailable.{}".format(C_YELLOW, C_RESET))
+
+    # 4. Process Ranking
+    mode_str = "RESIDENT SET" if group_procs else "PROCESS PID"
+    lines.append(f"{colors['CYAN']}{colors['BOLD']}TOP {len(procs)} PROCESSES BY {mode_str}{colors['RESET']}")
+
+    max_rss = procs[0]["rss"] if procs else 1
+    proc_sum_rss = sum(p["rss"] for p in procs)
+    proc_sum_pct = percentage(proc_sum_rss, total)
+
+    for p in procs:
+        count_str = f" ({p['count']})" if p.get("count", 1) > 1 else ""
+        name_full = f"{p['name']}{count_str}"
+        name_disp = (name_full[:18] + "~") if len(name_full) > 19 else name_full.ljust(19)
+
+        rss_str = format_bytes(p["rss"], precision=1).rjust(9)
+        p_pct = percentage(p["rss"], total)
+        mini_bar = render_mini_bar(p["rss"] / max_rss if max_rss > 0 else 0, width=16, colors=colors)
+
+        lines.append(f"{colors['WHITE']}{name_disp}{colors['RESET']} {colors['GREEN']}{rss_str}{colors['RESET']}  {mini_bar}  {colors['GRAY']}{p_pct:>4.1f}%{colors['RESET']}")
+
+    lines.append("")
+    lines.append(f"{colors['GRAY']}These {len(procs)} account for  {colors['WHITE']}{format_bytes(proc_sum_rss)} ({proc_sum_pct:.0f}% of installed RAM){colors['RESET']}")
 
     return "\n".join(lines)
 
 
-def validate_args(args):
-    if args.rate < 20 or args.rate > 2000:
-        raise ValueError("refresh rate must be between 20 and 2000 ms")
-    if args.count < 1 or args.count > 10000:
-        raise ValueError("process count must be between 1 and 10000")
+# ---------------------------------------------------------------------------
+# CLI & Main Loop
+# ---------------------------------------------------------------------------
 
-
-def parse_args(argv=None):
+def parse_arguments(args=None):
     parser = argparse.ArgumentParser(
         prog="ram",
-        description="ram-tui v{} - real-time terminal memory monitor".format(__version__),
+        description=f"ram-tui v{__version__} - Real-time terminal memory monitor for Linux, macOS & Windows"
     )
-    parser.add_argument(
-        "-r", "--rate", type=int, default=100,
-        help="refresh interval in milliseconds (20-2000, default: 100)",
-    )
-    parser.add_argument(
-        "-n", "--count", type=int, default=8,
-        help="number of top processes to display (1-10000, default: 8)",
-    )
-    parser.add_argument("-1", "--once", action="store_true", help="output one snapshot and exit")
-    parser.add_argument("--json", action="store_true", help="output one machine-readable JSON snapshot and exit")
-    parser.add_argument("--no-group", action="store_true", help="show individual process PIDs instead of grouping")
-    parser.add_argument("-v", "--version", action="version", version="%(prog)s v{}".format(__version__))
-    args = parser.parse_args(argv)
-    try:
-        validate_args(args)
-    except ValueError as exc:
-        parser.error(str(exc))
-    return args
+    parser.add_argument("-r", "--rate", type=int, default=100, help="Refresh interval in milliseconds (20–2000, default: 100)")
+    parser.add_argument("-n", "--count", type=int, default=8, help="Number of top processes (1–10000, default: 8)")
+    parser.add_argument("-1", "--once", action="store_true", help="Output one snapshot and exit")
+    parser.add_argument("--json", action="store_true", help="Output one JSON snapshot and exit")
+    parser.add_argument("--no-group", action="store_true", help="Show individual process PIDs instead of grouping")
+    parser.add_argument("-v", "--version", action="version", version=f"%(prog)s v{__version__}")
+    parsed = parser.parse_args(args)
+
+    if parsed.rate < 20 or parsed.rate > 2000:
+        parser.error("refresh rate must be between 20 and 2000 ms")
+    if parsed.count < 1 or parsed.count > 10000:
+        parser.error("process count must be between 1 and 10000")
+
+    return parsed
 
 
-def main(argv=None):
-    args = parse_args(argv)
-    group_procs = not args.no_group
+def main():
+    args = parse_arguments()
 
+    # JSON Snapshot Mode
     if args.json:
-        snapshot = build_snapshot(group_procs, args.count)
-        json.dump(snapshot, sys.stdout, indent=2, ensure_ascii=False)
-        sys.stdout.write("\n")
-        return 0
+        mem = get_meminfo()
+        procs = get_processes(group_by_name=not args.no_group, limit=args.count)
+        payload = {
+            "timestamp": datetime.now().astimezone().isoformat(),
+            "hostname": sanitize_text(socket.gethostname()),
+            "os": SYSTEM_OS,
+            "version": __version__,
+            "memory": mem,
+            "top_processes": procs
+        }
+        print(json.dumps(payload, indent=2))
+        return
 
+    # One-Shot Mode
     if args.once:
-        snapshot = build_snapshot(group_procs, args.count)
-        sys.stdout.write(render_snapshot(snapshot) + "\n")
-        return 0
+        mem = get_meminfo()
+        procs = get_processes(group_by_name=not args.no_group, limit=args.count)
+        color_enabled = should_use_color(is_interactive=False)
+        print(render_snapshot(mem, procs, group_procs=not args.no_group, paused=False, enable_color=color_enabled))
+        return
 
+    # Interactive TUI Mode
     term = TerminalManager()
-    refresh_seconds = args.rate / 1000.0
-    paused = False
-    first_render = True
-    next_refresh = time.monotonic()
 
-    def stop_handler(signum=None, frame=None):
-        raise KeyboardInterrupt
+    def cleanup_and_exit(signum=None, frame=None):
+        term.restore()
+        sys.exit(0)
 
     try:
-        signal.signal(signal.SIGINT, stop_handler)
-        if hasattr(signal, "SIGTERM"):
-            signal.signal(signal.SIGTERM, stop_handler)
-    except (ValueError, OSError):
+        signal.signal(signal.SIGINT, cleanup_and_exit)
+        signal.signal(signal.SIGTERM, cleanup_and_exit)
+    except Exception:
         pass
 
+    refresh_ms = args.rate
+    proc_count = args.count
+    group_procs = not args.no_group
+    paused = False
+    color_enabled = should_use_color(is_interactive=True)
+
+    term.setup_raw()
+
     try:
-        term.setup_raw()
+        # Monotonic loop deadline scheduler
+        next_deadline = time.monotonic()
+
         while True:
-            now = time.monotonic()
-            if now < next_refresh:
-                # Poll input at short intervals so pause/quit stays responsive.
-                time.sleep(min(0.02, next_refresh - now))
+            # Handle interactive hotkeys
+            ch = term.check_key()
+            if ch:
+                if ch in ("q", "Q", "\x03"):
+                    break
+                elif ch in ("p", "P", " "):
+                    paused = not paused
+                elif ch in ("+", "="):
+                    refresh_ms = max(20, refresh_ms - 25)
+                elif ch in ("-", "_"):
+                    refresh_ms = min(2000, refresh_ms + 50)
+                elif ch == "1":
+                    group_procs = True
+                elif ch == "2":
+                    group_procs = False
+
+            if not paused:
+                mem = get_meminfo()
+                procs = get_processes(group_by_name=group_procs, limit=proc_count)
+                output = render_snapshot(mem, procs, group_procs=group_procs, paused=paused, enable_color=color_enabled)
+                sys.stdout.write(f"\033[H\033[J{output}\n")
+                sys.stdout.flush()
+
+            # Monotonic scheduling
+            next_deadline += (refresh_ms / 1000.0)
+            sleep_duration = next_deadline - time.monotonic()
+            if sleep_duration > 0:
+                time.sleep(sleep_duration)
             else:
-                if term.is_tty:
-                    ch = term.check_key()
-                    if ch:
-                        if ch in ("q", "Q", "\x03"):
-                            break
-                        if ch in ("p", "P", " "):
-                            paused = not paused
-                        elif ch in ("+", "="):
-                            args.rate = max(20, args.rate - 25)
-                            refresh_seconds = args.rate / 1000.0
-                        elif ch in ("-", "_"):
-                            args.rate = min(2000, args.rate + 50)
-                            refresh_seconds = args.rate / 1000.0
-                        elif ch == "1":
-                            group_procs = True
-                        elif ch == "2":
-                            group_procs = False
-
-                if not paused or first_render:
-                    snapshot = build_snapshot(group_procs, args.count)
-                    output = render_snapshot(snapshot, paused=paused)
-                    if term.is_tty:
-                        sys.stdout.write("\033[H\033[2J" + output + "\n")
-                    else:
-                        sys.stdout.write(output + "\n")
-                    sys.stdout.flush()
-                    first_render = False
-
-                # Monotonic scheduling avoids drift caused by collection/render time.
-                next_refresh = max(next_refresh + refresh_seconds, time.monotonic())
+                next_deadline = time.monotonic()
 
     except KeyboardInterrupt:
-        return 0
-    except (BrokenPipeError, OSError):
-        return 0
+        pass
     finally:
         term.restore()
 
-    return 0
-
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
