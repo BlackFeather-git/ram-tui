@@ -1,7 +1,7 @@
 # ram-tui
 
 > *"Small enough to understand. Accurate enough to trust. Fast enough to leave running."*  
-> *"I made this because I wanted it — and now anyone can depend on it."*
+> *"I made this because I wanted it - and now anyone can depend on it."*
 
 `ram-tui` is a lightweight, cross-platform terminal memory monitor written in Python for **Linux, macOS, and Windows**. It provides real-time, best-effort memory statistics using platform-native data sources, process resident-memory ranking, optional process grouping, configurable refresh rates, one-shot snapshots, and machine-readable JSON output.
 
