@@ -11,7 +11,7 @@ sys.path.insert(0, ROOT)
 ram = SourceFileLoader("ram_tui_under_test", os.path.join(ROOT, "ram")).load_module()
 
 
-class FormattingTests(unittest.TestCase):
+class FormattingAndSanitizationTests(unittest.TestCase):
     def test_format_bytes_boundaries(self):
         self.assertEqual(ram.format_bytes(0), "0 B")
         self.assertEqual(ram.format_bytes(1023), "1023 B")
@@ -28,13 +28,15 @@ class FormattingTests(unittest.TestCase):
         self.assertEqual(ram.percentage(50, 100), 50.0)
         self.assertEqual(ram.percentage(None, 100), 0.0)
 
-    def test_sanitize_control_and_bidi(self):
-        text = "hello\n\x1b[31mworld\tok\u202eoverride"
+    def test_sanitize_full_ansi_sequences_and_bidi(self):
+        # Full ANSI sequences should be completely removed, and control codes replaced with ~
+        text = "hello\n\x1b[31;1mworld\x1b[0m\tok\u202eoverride"
         clean = ram.sanitize_text(text)
         self.assertNotIn("\n", clean)
         self.assertNotIn("\x1b", clean)
+        self.assertNotIn("[31;1m", clean)
         self.assertNotIn("\u202e", clean)
-        self.assertIn("world", clean)
+        self.assertEqual(clean, "hello~world~ok~override")
 
 
 class LinuxParserTests(unittest.TestCase):
@@ -51,17 +53,23 @@ Cached:         1024 kB
             self.assertEqual(data["used"], 4096 * 1024)
             self.assertEqual(data["cached"], 1024 * 1024)
 
-    def test_pid_name_cache_starttime(self):
+    def test_linux_proc_starttime_parsing(self):
+        # /proc/[pid]/stat line where process comm contains spaces and parentheses
+        stat_line = "1234 (weird (name)) S 100 1234 1234 0 -1 4194304 100 0 0 0 10 5 0 0 20 0 1 0 987654 1000 500"
+        with mock.patch("builtins.open", mock.mock_open(read_data=stat_line)):
+            starttime = ram.get_linux_proc_starttime(1234)
+            self.assertEqual(starttime, "987654")
+
+    def test_pid_name_cache_starttime_isolation(self):
         ram.PID_NAME_CACHE.clear()
-        ram.PID_NAME_CACHE[(100, 12345)] = "old_process"
-        ram.PID_NAME_CACHE[(100, 67890)] = "reused_process"
-        self.assertEqual(ram.PID_NAME_CACHE.get((100, 12345)), "old_process")
-        self.assertEqual(ram.PID_NAME_CACHE.get((100, 67890)), "reused_process")
+        ram.PID_NAME_CACHE[(100, "987654")] = "old_process"
+        ram.PID_NAME_CACHE[(100, "999999")] = "reused_process"
+        self.assertEqual(ram.PID_NAME_CACHE.get((100, "987654")), "old_process")
+        self.assertEqual(ram.PID_NAME_CACHE.get((100, "999999")), "reused_process")
 
 
 class DarwinParserTests(unittest.TestCase):
-    @mock.patch("subprocess.check_output")
-    def test_darwin_metrics_and_unavailable_commit(self, mock_subp):
+    def test_darwin_metrics_and_unavailable_commit(self):
         def side_effect(cmd, **kwargs):
             if "hw.memsize" in cmd:
                 return "17179869184\n"
@@ -78,17 +86,17 @@ Pages occupied by compressor:            100000.
                 return "total = 2048.00M  used = 512.00M  free = 1536.00M  (encrypted)\n"
             return ""
 
-        mock_subp.side_effect = side_effect
-        info = ram.get_meminfo_darwin()
-        self.assertTrue(info["valid"])
-        self.assertEqual(info["total"], 17179869184)
-        self.assertIsNone(info["commit_as"])
-        self.assertIsNone(info["commit_limit"])
-        self.assertEqual(info["swap_used"], 512 * 1024 * 1024)
-        self.assertEqual(info["swap_total"], 2048 * 1024 * 1024)
+        with mock.patch.object(ram, "run_command", side_effect=side_effect):
+            info = ram.get_meminfo_darwin()
+            self.assertTrue(info["valid"])
+            self.assertEqual(info["total"], 17179869184)
+            self.assertIsNone(info["commit_as"])
+            self.assertIsNone(info["commit_limit"])
+            self.assertEqual(info["swap_used"], 512 * 1024 * 1024)
+            self.assertEqual(info["swap_total"], 2048 * 1024 * 1024)
 
 
-class CliAndJsonTests(unittest.TestCase):
+class TerminalAndCliTests(unittest.TestCase):
     def test_cli_boundaries(self):
         args = ram.parse_arguments(["-r", "50", "-n", "10"])
         self.assertEqual(args.rate, 50)
@@ -99,24 +107,47 @@ class CliAndJsonTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             ram.parse_arguments(["-n", "0"])
 
-    def test_render_and_json_structure(self):
+    def test_narrow_terminal_render(self):
         mem = {
             "total": 32 * 1024**3,
             "available": 24 * 1024**3,
             "used": 8 * 1024**3,
-            "commit_as": 12 * 1024**3,
-            "commit_limit": 40 * 1024**3,
+            "commit_as": None,
+            "commit_limit": None,
             "cached": 6 * 1024**3,
             "swap_used": 100 * 1024**2,
             "swap_total": 16 * 1024**3,
             "swap_desc": "zram swap",
             "valid": True
         }
-        procs = [{"name": "brave", "rss": 2 * 1024**3, "count": 5, "pid": None}]
-        rendered = ram.render_snapshot(mem, procs, group_procs=True, enable_color=False)
-        self.assertIn("RAM USAGE", rendered)
-        self.assertIn("brave (5)", rendered)
+        procs = [{"name": "super_long_process_name_for_testing", "rss": 2 * 1024**3, "count": 1, "pid": 123}]
+        with mock.patch("shutil.get_terminal_size", return_value=os.terminal_size((40, 24))):
+            rendered = ram.render_snapshot(mem, procs, group_procs=False, enable_color=False)
+            self.assertIn("RAM USAGE", rendered)
+            self.assertIn("super_lon~", rendered)
 
+    def test_terminal_manager_idempotent_restore(self):
+        tm = ram.TerminalManager()
+        tm._restored = False
+        tm.restore()
+        self.assertTrue(tm._restored)
+        tm.restore()
+        self.assertTrue(tm._restored)
+
+    def test_json_payload_structure(self):
+        mem = {
+            "total": 32000000000,
+            "available": 24000000000,
+            "used": 8000000000,
+            "commit_as": 12000000000,
+            "commit_limit": 40000000000,
+            "cached": 6000000000,
+            "swap_used": 100000000,
+            "swap_total": 16000000000,
+            "swap_desc": "zram swap",
+            "valid": True
+        }
+        procs = [{"name": "test_app", "rss": 100000000, "count": 1, "pid": None}]
         payload = {
             "timestamp": "2026-08-31T00:00:00+05:30",
             "hostname": "test-box",
@@ -126,7 +157,7 @@ class CliAndJsonTests(unittest.TestCase):
             "top_processes": procs
         }
         parsed = json.loads(json.dumps(payload))
-        self.assertEqual(parsed["version"], "0.4.0")
+        self.assertEqual(parsed["version"], ram.__version__)
         self.assertIn("memory", parsed)
         self.assertIn("top_processes", parsed)
 

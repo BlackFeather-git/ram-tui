@@ -2,7 +2,7 @@
 """
 ram-tui - Lightweight real-time terminal memory monitor for Linux, macOS & Windows.
 
-Author: BlackFeather (https://github.com/BlackFeather-git)
+Author: Raven (BlackFeather) https://github.com/BlackFeather-git/ram-tui
 License: MIT
 """
 
@@ -22,7 +22,7 @@ import shutil
 import heapq
 from datetime import datetime
 
-__version__ = "0.4.0"
+__version__ = "0.4.1"
 SYSTEM_OS = platform.system()
 
 PAGE_SIZE = 4096
@@ -33,8 +33,11 @@ if SYSTEM_OS == "Linux":
         PAGE_SIZE = 4096
 
 # Process starttime-keyed cache to prevent PID-reuse race conditions
-# Key: (pid, start_time_identifier) -> process_name
+# Key: (pid, starttime_jiffies) -> process_name
 PID_NAME_CACHE = {}
+
+# ANSI escape sequence regex for complete sequence removal
+ANSI_ESCAPE_RE = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
 # Unicode bidirectional control characters to strip for terminal integrity
 BIDI_CHARS = set("\u200e\u200f\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069")
@@ -107,14 +110,15 @@ def percentage(part, whole):
 
 
 def sanitize_text(value, replacement="~"):
-    """Remove terminal control characters, ANSI codes, and bidi overrides from process names."""
+    """Strips full ANSI sequences, control characters, and bidi overrides from process names."""
     if value is None:
         return ""
-    text = str(value)
+    # 1. Strip entire ANSI escape sequences cleanly
+    text = ANSI_ESCAPE_RE.sub("", str(value))
+    # 2. Strip control codes and bidi overrides
     cleaned = []
     for char in text:
         code = ord(char)
-        # Strip ASCII control codes (0-31, 127), bidi overrides, and DEL
         if code < 32 or code == 127 or char in BIDI_CHARS:
             cleaned.append(replacement)
         else:
@@ -122,12 +126,24 @@ def sanitize_text(value, replacement="~"):
     return "".join(cleaned)
 
 
+def run_command(cmd, timeout=1.0):
+    """Executes a command safely without shell, compatible with Python 3.6+."""
+    try:
+        out = subprocess.check_output(cmd, universal_newlines=True, timeout=timeout, errors="ignore")
+        return out
+    except Exception:
+        return ""
+
+
 class TerminalManager:
-    """Manages raw terminal state, cursor visibility, and non-blocking input."""
+    """Manages raw terminal state, cursor visibility, Windows mode, and non-blocking input."""
     def __init__(self):
         self.is_tty = sys.stdout.isatty() and sys.stdin.isatty()
         self.orig_termios = None
         self.fd = None
+        self.h_stdout = None
+        self.orig_console_mode = None
+        self._restored = False
 
         if self.is_tty:
             try:
@@ -135,10 +151,13 @@ class TerminalManager:
             except Exception:
                 self.is_tty = False
 
-        if SYSTEM_OS == "Windows":
+        if SYSTEM_OS == "Windows" and self.is_tty:
             try:
                 kernel32 = ctypes.windll.kernel32
-                kernel32.SetConsoleMode(kernel32.GetStdHandle(-11), 7)
+                self.h_stdout = kernel32.GetStdHandle(-11)
+                mode = ctypes.c_ulong()
+                if kernel32.GetConsoleMode(self.h_stdout, ctypes.byref(mode)):
+                    self.orig_console_mode = mode.value
             except Exception:
                 pass
         elif self.is_tty and self.fd is not None:
@@ -150,7 +169,13 @@ class TerminalManager:
 
     def setup_raw(self):
         if self.is_tty:
-            if SYSTEM_OS != "Windows" and self.orig_termios and self.fd is not None:
+            if SYSTEM_OS == "Windows":
+                try:
+                    if self.h_stdout is not None and self.orig_console_mode is not None:
+                        ctypes.windll.kernel32.SetConsoleMode(self.h_stdout, self.orig_console_mode | 7)
+                except Exception:
+                    pass
+            elif self.orig_termios and self.fd is not None:
                 try:
                     import tty
                     tty.setcbreak(self.fd)
@@ -160,10 +185,25 @@ class TerminalManager:
             sys.stdout.flush()
 
     def restore(self):
+        """Idempotent terminal restoration ensuring zero duplicate writes."""
+        if self._restored:
+            return
+        self._restored = True
+
         if self.is_tty:
-            sys.stdout.write("\033[?25h\033[0m\n")  # Show cursor & reset styles
-            sys.stdout.flush()
-            if SYSTEM_OS != "Windows" and self.orig_termios and self.fd is not None:
+            try:
+                sys.stdout.write("\033[?25h\033[0m\n")  # Show cursor & reset styles
+                sys.stdout.flush()
+            except Exception:
+                pass
+
+            if SYSTEM_OS == "Windows":
+                if self.h_stdout is not None and self.orig_console_mode is not None:
+                    try:
+                        ctypes.windll.kernel32.SetConsoleMode(self.h_stdout, self.orig_console_mode)
+                    except Exception:
+                        pass
+            elif self.orig_termios and self.fd is not None:
                 try:
                     import termios
                     termios.tcsetattr(self.fd, termios.TCSADRAIN, self.orig_termios)
@@ -303,14 +343,12 @@ def get_meminfo_windows():
         available = stat.ullAvailPhys
         used = max(0, total - available)
 
-        # Get system-wide commit metrics via GetPerformanceInfo (PSAPI / Kernel32)
-        commit_as = 0
-        commit_limit = 0
+        commit_as = None
+        commit_limit = None
         cached = 0
         try:
             perf = PERFORMANCE_INFORMATION()
             perf.cb = ctypes.sizeof(PERFORMANCE_INFORMATION)
-            # Try kernel32 first, fallback to psapi
             psapi = getattr(ctypes.windll.kernel32, "K32GetPerformanceInfo", None) or getattr(ctypes.windll.psapi, "GetPerformanceInfo", None)
             if psapi and psapi(ctypes.byref(perf), perf.cb):
                 page_size = perf.PageSize or 4096
@@ -318,8 +356,8 @@ def get_meminfo_windows():
                 commit_limit = perf.CommitLimit * page_size
                 cached = perf.SystemCache * page_size
         except Exception:
-            commit_as = max(0, stat.ullTotalPageFile - stat.ullAvailPageFile)
-            commit_limit = stat.ullTotalPageFile
+            commit_as = None
+            commit_limit = None
 
         swap_total = max(0, stat.ullTotalPageFile - total)
         swap_desc = "pagefile capacity"
@@ -331,22 +369,22 @@ def get_meminfo_windows():
             "commit_as": commit_as,
             "commit_limit": commit_limit,
             "cached": cached,
-            "swap_used": None,  # Not claimed because Windows does not expose exact pagefile residency
+            "swap_used": None,  # Not claimed because Windows APIs do not expose exact pagefile residency
             "swap_total": swap_total,
             "swap_desc": swap_desc,
             "valid": total > 0,
         }
     except Exception:
-        return {"total": 0, "available": 0, "used": 0, "commit_as": 0, "commit_limit": 0, "cached": 0, "swap_used": None, "swap_total": 0, "swap_desc": "unknown", "valid": False}
+        return {"total": 0, "available": 0, "used": 0, "commit_as": None, "commit_limit": None, "cached": 0, "swap_used": None, "swap_total": 0, "swap_desc": "unknown", "valid": False}
 
 
 def get_meminfo_darwin():
-    """Fetches memory statistics on macOS using sysctl and vm_stat."""
+    """Fetches memory statistics on macOS using sysctl and vm_stat (Python 3.6+ compatible)."""
     try:
-        total_str = subprocess.check_output(["sysctl", "-n", "hw.memsize"], text=True, timeout=1.0).strip()
+        total_str = run_command(["sysctl", "-n", "hw.memsize"], timeout=1.0).strip()
         total = int(total_str)
 
-        vm_out = subprocess.check_output(["vm_stat"], text=True, timeout=1.0)
+        vm_out = run_command(["vm_stat"], timeout=1.0)
         page_size = 4096
         free_pages = active_pages = inactive_pages = speculative_pages = wired_pages = compressed_pages = 0
         for line in vm_out.splitlines():
@@ -374,7 +412,7 @@ def get_meminfo_darwin():
         # Swap metrics
         swap_used = swap_total = 0
         try:
-            swap_str = subprocess.check_output(["sysctl", "-n", "vm.swapusage"], text=True, timeout=1.0).strip()
+            swap_str = run_command(["sysctl", "-n", "vm.swapusage"], timeout=1.0).strip()
             matches = re.findall(r"(\w+)\s*=\s*([0-9.]+)\s*([KMGTP]?)", swap_str, re.IGNORECASE)
             units = {"K": 1024, "M": 1024**2, "G": 1024**3, "T": 1024**4, "P": 1024**5}
             for k, val, unit in matches:
@@ -418,8 +456,23 @@ def get_meminfo():
 # Platform Process Collectors
 # ---------------------------------------------------------------------------
 
+def get_linux_proc_starttime(pid):
+    """Reads documented field 22 (starttime) from /proc/<pid>/stat."""
+    try:
+        with open(f"/proc/{pid}/stat", "r") as f:
+            content = f.read()
+        rparen = content.rfind(")")
+        if rparen != -1:
+            fields = content[rparen + 2:].split()
+            if len(fields) >= 20:
+                return fields[19]  # Field 22 overall (1-indexed), field 20 after (comm)
+    except Exception:
+        pass
+    return None
+
+
 def get_processes_linux(group_by_name=True, limit=8):
-    """Scans Linux /proc with starttime-keyed cache to eliminate PID-reuse bugs."""
+    """Scans Linux /proc with documented stat starttime cache to eliminate PID reuse races."""
     global PID_NAME_CACHE
     procs = {}
 
@@ -432,14 +485,12 @@ def get_processes_linux(group_by_name=True, limit=8):
 
     for pid in pids:
         try:
-            # 1. Read start time via /proc/[pid] stat mtime or stat field 22 to prevent reuse bugs
-            try:
-                proc_stat = os.stat(f"/proc/{pid}")
-                start_id = proc_stat.st_mtime_ns if hasattr(proc_stat, "st_mtime_ns") else int(proc_stat.st_mtime * 1e9)
-            except Exception:
-                start_id = 0
+            # 1. Read documented starttime field from /proc/<pid>/stat
+            starttime = get_linux_proc_starttime(pid)
+            if starttime is None:
+                continue
 
-            cache_key = (pid, start_id)
+            cache_key = (pid, starttime)
             valid_keys.add(cache_key)
 
             # 2. Fast single-file RSS read
@@ -489,7 +540,7 @@ def get_processes_linux(group_by_name=True, limit=8):
     # Purge dead processes from cache
     PID_NAME_CACHE = {k: v for k, v in PID_NAME_CACHE.items() if k in valid_keys}
 
-    # Deterministic top-N extraction
+    # Bounded top-N extraction
     return heapq.nlargest(limit, procs.values(), key=lambda x: (x["rss"], x["name"], x.get("pid") or 0))
 
 
@@ -569,10 +620,10 @@ def get_processes_windows(group_by_name=True, limit=8):
 
 
 def get_processes_darwin(group_by_name=True, limit=8):
-    """Scans processes on macOS using ps."""
+    """Scans processes on macOS using ps (Python 3.6+ compatible)."""
     procs = {}
     try:
-        output = subprocess.check_output(["ps", "-axo", "pid,rss,comm"], text=True, timeout=1.0, errors="ignore")
+        output = run_command(["ps", "-axo", "pid,rss,comm"], timeout=1.0)
         for line in output.splitlines()[1:]:
             parts = line.strip().split(maxsplit=2)
             if len(parts) == 3 and parts[1].isdigit():
@@ -642,7 +693,7 @@ def render_mini_bar(ratio, width=16, colors=None):
 
 
 def render_snapshot(mem, procs, group_procs=True, paused=False, enable_color=True):
-    """Renders full memory and process screen into a formatted text string."""
+    """Renders full memory and process screen with adaptive narrow terminal support."""
     colors = get_ansi_palette(enable_color)
     hostname = sanitize_text(socket.gethostname())
     now_str = datetime.now().strftime("%a %H:%M:%S")
@@ -653,7 +704,8 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, enable_color=Tru
     used_pct = percentage(used, total)
 
     cols = shutil.get_terminal_size((80, 24)).columns
-    bar_width = min(42, max(20, cols - 20))
+    # Adapt bar width gracefully even on narrow terminals (e.g. 30-40 cols)
+    bar_width = max(8, min(42, cols - 15))
 
     lines = []
 
@@ -683,7 +735,7 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, enable_color=Tru
         commit_pct = percentage(commit_as, commit_limit)
         lines.append(f"{colors['WHITE']}{colors['BOLD']}Commit{colors['RESET']}  {format_bytes(commit_as)} / {format_bytes(commit_limit)}  {colors['GRAY']}({commit_pct:.0f}% of commit limit){colors['RESET']}")
     else:
-        lines.append(f"{colors['WHITE']}{colors['BOLD']}Commit{colors['RESET']}  N/A  {colors['GRAY']}(unsupported on macOS){colors['RESET']}")
+        lines.append(f"{colors['WHITE']}{colors['BOLD']}Commit{colors['RESET']}  N/A  {colors['GRAY']}(unsupported on macOS/platform){colors['RESET']}")
 
     # Cache metric
     cached_val = mem.get("cached", 0)
@@ -708,14 +760,18 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, enable_color=Tru
     proc_sum_rss = sum(p["rss"] for p in procs)
     proc_sum_pct = percentage(proc_sum_rss, total)
 
+    # Adaptive process name width based on terminal columns
+    name_col_width = max(10, min(19, cols - 35))
+    mini_bar_width = max(6, min(16, cols - 40))
+
     for p in procs:
         count_str = f" ({p['count']})" if p.get("count", 1) > 1 else ""
         name_full = f"{p['name']}{count_str}"
-        name_disp = (name_full[:18] + "~") if len(name_full) > 19 else name_full.ljust(19)
+        name_disp = (name_full[:name_col_width - 1] + "~") if len(name_full) > name_col_width else name_full.ljust(name_col_width)
 
         rss_str = format_bytes(p["rss"], precision=1).rjust(9)
         p_pct = percentage(p["rss"], total)
-        mini_bar = render_mini_bar(p["rss"] / max_rss if max_rss > 0 else 0, width=16, colors=colors)
+        mini_bar = render_mini_bar(p["rss"] / max_rss if max_rss > 0 else 0, width=mini_bar_width, colors=colors)
 
         lines.append(f"{colors['WHITE']}{name_disp}{colors['RESET']} {colors['GREEN']}{rss_str}{colors['RESET']}  {mini_bar}  {colors['GRAY']}{p_pct:>4.1f}%{colors['RESET']}")
 
@@ -752,6 +808,11 @@ def parse_arguments(args=None):
 
 def main():
     args = parse_arguments()
+    term = TerminalManager()
+
+    # If running in non-TTY pipe without explicit flags, degrade cleanly to one-shot
+    if not term.is_tty and not args.json and not args.once:
+        args.once = True
 
     # JSON Snapshot Mode
     if args.json:
@@ -777,8 +838,6 @@ def main():
         return
 
     # Interactive TUI Mode
-    term = TerminalManager()
-
     def cleanup_and_exit(signum=None, frame=None):
         term.restore()
         sys.exit(0)
@@ -798,7 +857,6 @@ def main():
     term.setup_raw()
 
     try:
-        # Monotonic loop deadline scheduler
         next_deadline = time.monotonic()
 
         while True:
@@ -822,8 +880,11 @@ def main():
                 mem = get_meminfo()
                 procs = get_processes(group_by_name=group_procs, limit=proc_count)
                 output = render_snapshot(mem, procs, group_procs=group_procs, paused=paused, enable_color=color_enabled)
-                sys.stdout.write(f"\033[H\033[J{output}\n")
-                sys.stdout.flush()
+                try:
+                    sys.stdout.write(f"\033[H\033[J{output}\n")
+                    sys.stdout.flush()
+                except BrokenPipeError:
+                    break
 
             # Monotonic scheduling
             next_deadline += (refresh_ms / 1000.0)
