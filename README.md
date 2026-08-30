@@ -131,7 +131,7 @@ ram --json
   "timestamp": "2026-08-31T00:15:00+05:30",
   "hostname": "my-laptop",
   "os": "Linux",
-  "version": "0.4.0",
+  "version": "0.4.2",
   "memory": {
     "total": 33554432000,
     "available": 28689039360,

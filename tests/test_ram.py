@@ -3,6 +3,7 @@ import json
 import os
 import sys
 import unittest
+import subprocess
 from unittest import mock
 from importlib.machinery import SourceFileLoader
 
@@ -29,7 +30,6 @@ class FormattingAndSanitizationTests(unittest.TestCase):
         self.assertEqual(ram.percentage(None, 100), 0.0)
 
     def test_sanitize_full_ansi_sequences_and_bidi(self):
-        # Full ANSI sequences should be completely removed, and control codes replaced with ~
         text = "hello\n\x1b[31;1mworld\x1b[0m\tok\u202eoverride"
         clean = ram.sanitize_text(text)
         self.assertNotIn("\n", clean)
@@ -54,7 +54,6 @@ Cached:         1024 kB
             self.assertEqual(data["cached"], 1024 * 1024)
 
     def test_linux_proc_starttime_parsing(self):
-        # /proc/[pid]/stat line where process comm contains spaces and parentheses
         stat_line = "1234 (weird (name)) S 100 1234 1234 0 -1 4194304 100 0 0 0 10 5 0 0 20 0 1 0 987654 1000 500"
         with mock.patch("builtins.open", mock.mock_open(read_data=stat_line)):
             starttime = ram.get_linux_proc_starttime(1234)
@@ -114,7 +113,7 @@ class TerminalAndCliTests(unittest.TestCase):
             "used": 8 * 1024**3,
             "commit_as": None,
             "commit_limit": None,
-            "cached": 6 * 1024**3,
+            "cached": None,
             "swap_used": 100 * 1024**2,
             "swap_total": 16 * 1024**3,
             "swap_desc": "zram swap",
@@ -124,7 +123,7 @@ class TerminalAndCliTests(unittest.TestCase):
         with mock.patch("shutil.get_terminal_size", return_value=os.terminal_size((40, 24))):
             rendered = ram.render_snapshot(mem, procs, group_procs=False, enable_color=False)
             self.assertIn("RAM USAGE", rendered)
-            self.assertIn("super_lon~", rendered)
+            self.assertIn("Cached  N/A", rendered)
 
     def test_terminal_manager_idempotent_restore(self):
         tm = ram.TerminalManager()
@@ -134,32 +133,16 @@ class TerminalAndCliTests(unittest.TestCase):
         tm.restore()
         self.assertTrue(tm._restored)
 
-    def test_json_payload_structure(self):
-        mem = {
-            "total": 32000000000,
-            "available": 24000000000,
-            "used": 8000000000,
-            "commit_as": 12000000000,
-            "commit_limit": 40000000000,
-            "cached": 6000000000,
-            "swap_used": 100000000,
-            "swap_total": 16000000000,
-            "swap_desc": "zram swap",
-            "valid": True
-        }
-        procs = [{"name": "test_app", "rss": 100000000, "count": 1, "pid": None}]
-        payload = {
-            "timestamp": "2026-08-31T00:00:00+05:30",
-            "hostname": "test-box",
-            "os": "Linux",
-            "version": ram.__version__,
-            "memory": mem,
-            "top_processes": procs
-        }
-        parsed = json.loads(json.dumps(payload))
+    def test_real_cli_json_stdout_execution(self):
+        """Executes the actual CLI script via subprocess and validates real JSON stdout."""
+        cmd = [sys.executable, os.path.join(ROOT, "ram"), "--json"]
+        out = subprocess.check_output(cmd, universal_newlines=True)
+        parsed = json.loads(out)
         self.assertEqual(parsed["version"], ram.__version__)
         self.assertIn("memory", parsed)
         self.assertIn("top_processes", parsed)
+        self.assertIn("hostname", parsed)
+        self.assertTrue(isinstance(parsed["top_processes"], list))
 
 
 if __name__ == "__main__":

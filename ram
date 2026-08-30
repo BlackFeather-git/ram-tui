@@ -22,7 +22,7 @@ import shutil
 import heapq
 from datetime import datetime
 
-__version__ = "0.4.1"
+__version__ = "0.4.2"
 SYSTEM_OS = platform.system()
 
 PAGE_SIZE = 4096
@@ -41,6 +41,52 @@ ANSI_ESCAPE_RE = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
 # Unicode bidirectional control characters to strip for terminal integrity
 BIDI_CHARS = set("\u200e\u200f\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069")
+
+
+# ---------------------------------------------------------------------------
+# Windows Win32 FFI Prototypes (Explicit Pointer-Sized Types for x64/x86)
+# ---------------------------------------------------------------------------
+if SYSTEM_OS == "Windows":
+    try:
+        k32 = ctypes.windll.kernel32
+        
+        # GetStdHandle(DWORD) -> HANDLE (c_void_p)
+        k32.GetStdHandle.argtypes = [ctypes.c_ulong]
+        k32.GetStdHandle.restype = ctypes.c_void_p
+
+        # GetConsoleMode(HANDLE, LPDWORD) -> BOOL
+        k32.GetConsoleMode.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_ulong)]
+        k32.GetConsoleMode.restype = ctypes.c_int
+
+        # SetConsoleMode(HANDLE, DWORD) -> BOOL
+        k32.SetConsoleMode.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+        k32.SetConsoleMode.restype = ctypes.c_int
+
+        # CreateToolhelp32Snapshot(DWORD, DWORD) -> HANDLE (c_void_p)
+        k32.CreateToolhelp32Snapshot.argtypes = [ctypes.c_ulong, ctypes.c_ulong]
+        k32.CreateToolhelp32Snapshot.restype = ctypes.c_void_p
+
+        # Process32FirstW(HANDLE, LPPROCESSENTRY32W) -> BOOL
+        k32.Process32FirstW.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+        k32.Process32FirstW.restype = ctypes.c_int
+
+        # Process32NextW(HANDLE, LPPROCESSENTRY32W) -> BOOL
+        k32.Process32NextW.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+        k32.Process32NextW.restype = ctypes.c_int
+
+        # OpenProcess(DWORD, BOOL, DWORD) -> HANDLE (c_void_p)
+        k32.OpenProcess.argtypes = [ctypes.c_ulong, ctypes.c_int, ctypes.c_ulong]
+        k32.OpenProcess.restype = ctypes.c_void_p
+
+        # CloseHandle(HANDLE) -> BOOL
+        k32.CloseHandle.argtypes = [ctypes.c_void_p]
+        k32.CloseHandle.restype = ctypes.c_int
+
+        # GlobalMemoryStatusEx(LPMEMORYSTATUSEX) -> BOOL
+        k32.GlobalMemoryStatusEx.argtypes = [ctypes.c_void_p]
+        k32.GlobalMemoryStatusEx.restype = ctypes.c_int
+    except Exception:
+        pass
 
 
 def should_use_color(is_interactive=True):
@@ -154,7 +200,7 @@ class TerminalManager:
         if SYSTEM_OS == "Windows" and self.is_tty:
             try:
                 kernel32 = ctypes.windll.kernel32
-                self.h_stdout = kernel32.GetStdHandle(-11)
+                self.h_stdout = kernel32.GetStdHandle(0xFFFFFFF5)  # STD_OUTPUT_HANDLE (-11)
                 mode = ctypes.c_ulong()
                 if kernel32.GetConsoleMode(self.h_stdout, ctypes.byref(mode)):
                     self.orig_console_mode = mode.value
@@ -302,7 +348,7 @@ def get_meminfo_linux():
 
 
 def get_meminfo_windows():
-    """Fetches system memory using GlobalMemoryStatusEx and GetPerformanceInfo."""
+    """Fetches system memory using GlobalMemoryStatusEx and GetPerformanceInfo with explicit 64-bit FFI."""
     try:
         class MEMORYSTATUSEX(ctypes.Structure):
             _fields_ = [
@@ -337,7 +383,8 @@ def get_meminfo_windows():
 
         stat = MEMORYSTATUSEX()
         stat.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
-        ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat))
+        if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat)):
+            return {"total": 0, "available": 0, "used": 0, "commit_as": None, "commit_limit": None, "cached": None, "swap_used": None, "swap_total": 0, "swap_desc": "unknown", "valid": False}
 
         total = stat.ullTotalPhys
         available = stat.ullAvailPhys
@@ -345,19 +392,23 @@ def get_meminfo_windows():
 
         commit_as = None
         commit_limit = None
-        cached = 0
+        cached = None
         try:
             perf = PERFORMANCE_INFORMATION()
             perf.cb = ctypes.sizeof(PERFORMANCE_INFORMATION)
-            psapi = getattr(ctypes.windll.kernel32, "K32GetPerformanceInfo", None) or getattr(ctypes.windll.psapi, "GetPerformanceInfo", None)
-            if psapi and psapi(ctypes.byref(perf), perf.cb):
-                page_size = perf.PageSize or 4096
-                commit_as = perf.CommitTotal * page_size
-                commit_limit = perf.CommitLimit * page_size
-                cached = perf.SystemCache * page_size
+            psapi_func = getattr(ctypes.windll.kernel32, "K32GetPerformanceInfo", None) or getattr(ctypes.windll.psapi, "GetPerformanceInfo", None)
+            if psapi_func:
+                psapi_func.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+                psapi_func.restype = ctypes.c_int
+                if psapi_func(ctypes.byref(perf), perf.cb):
+                    page_size = perf.PageSize or 4096
+                    commit_as = perf.CommitTotal * page_size
+                    commit_limit = perf.CommitLimit * page_size
+                    cached = perf.SystemCache * page_size
         except Exception:
             commit_as = None
             commit_limit = None
+            cached = None
 
         swap_total = max(0, stat.ullTotalPageFile - total)
         swap_desc = "pagefile capacity"
@@ -375,7 +426,7 @@ def get_meminfo_windows():
             "valid": total > 0,
         }
     except Exception:
-        return {"total": 0, "available": 0, "used": 0, "commit_as": None, "commit_limit": None, "cached": 0, "swap_used": None, "swap_total": 0, "swap_desc": "unknown", "valid": False}
+        return {"total": 0, "available": 0, "used": 0, "commit_as": None, "commit_limit": None, "cached": None, "swap_used": None, "swap_total": 0, "swap_desc": "unknown", "valid": False}
 
 
 def get_meminfo_darwin():
@@ -545,7 +596,7 @@ def get_processes_linux(group_by_name=True, limit=8):
 
 
 def get_processes_windows(group_by_name=True, limit=8):
-    """Scans processes on Windows using Tool Help API and GetProcessMemoryInfo."""
+    """Scans processes on Windows using Tool Help API and GetProcessMemoryInfo with explicit FFI types."""
     procs = {}
     try:
         class PROCESSENTRY32W(ctypes.Structure):
@@ -553,7 +604,7 @@ def get_processes_windows(group_by_name=True, limit=8):
                 ("dwSize", ctypes.c_ulong),
                 ("cntUsage", ctypes.c_ulong),
                 ("th32ProcessID", ctypes.c_ulong),
-                ("th32DefaultHeapID", ctypes.c_void_p),  # Correct ULONG_PTR ABI
+                ("th32DefaultHeapID", ctypes.c_void_p),  # ULONG_PTR
                 ("th32ModuleID", ctypes.c_ulong),
                 ("cntThreads", ctypes.c_ulong),
                 ("th32ParentProcessID", ctypes.c_ulong),
@@ -577,9 +628,13 @@ def get_processes_windows(group_by_name=True, limit=8):
             ]
 
         k32 = ctypes.windll.kernel32
-        psapi = getattr(k32, "K32GetProcessMemoryInfo", None) or getattr(ctypes.windll.psapi, "GetProcessMemoryInfo", None)
+        psapi_mem = getattr(k32, "K32GetProcessMemoryInfo", None) or getattr(ctypes.windll.psapi, "GetProcessMemoryInfo", None)
+        if psapi_mem:
+            psapi_mem.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_ulong]
+            psapi_mem.restype = ctypes.c_int
+
         h_snap = k32.CreateToolhelp32Snapshot(0x00000002, 0)
-        if h_snap == -1:
+        if not h_snap or h_snap == ctypes.c_void_p(-1).value:
             return []
 
         pe = PROCESSENTRY32W()
@@ -595,7 +650,7 @@ def get_processes_windows(group_by_name=True, limit=8):
                         try:
                             pmc = PROCESS_MEMORY_COUNTERS()
                             pmc.cb = ctypes.sizeof(PROCESS_MEMORY_COUNTERS)
-                            if psapi and psapi(h_proc, ctypes.byref(pmc), pmc.cb):
+                            if psapi_mem and psapi_mem(h_proc, ctypes.byref(pmc), pmc.cb):
                                 rss_bytes = pmc.WorkingSetSize
                                 if rss_bytes > 0:
                                     if group_by_name:
@@ -704,7 +759,6 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, enable_color=Tru
     used_pct = percentage(used, total)
 
     cols = shutil.get_terminal_size((80, 24)).columns
-    # Adapt bar width gracefully even on narrow terminals (e.g. 30-40 cols)
     bar_width = max(8, min(42, cols - 15))
 
     lines = []
@@ -738,8 +792,11 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, enable_color=Tru
         lines.append(f"{colors['WHITE']}{colors['BOLD']}Commit{colors['RESET']}  N/A  {colors['GRAY']}(unsupported on macOS/platform){colors['RESET']}")
 
     # Cache metric
-    cached_val = mem.get("cached", 0)
-    lines.append(f"{colors['WHITE']}{colors['BOLD']}Cached{colors['RESET']}  {format_bytes(cached_val):<10} {colors['GRAY']}(cache + reclaimable estimate){colors['RESET']}")
+    cached_val = mem.get("cached")
+    if cached_val is not None:
+        lines.append(f"{colors['WHITE']}{colors['BOLD']}Cached{colors['RESET']}  {format_bytes(cached_val):<10} {colors['GRAY']}(cache + reclaimable estimate){colors['RESET']}")
+    else:
+        lines.append(f"{colors['WHITE']}{colors['BOLD']}Cached{colors['RESET']}  N/A        {colors['GRAY']}(unsupported on platform / API error){colors['RESET']}")
 
     # Swap metric
     swap_used = mem.get("swap_used")
@@ -760,7 +817,6 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, enable_color=Tru
     proc_sum_rss = sum(p["rss"] for p in procs)
     proc_sum_pct = percentage(proc_sum_rss, total)
 
-    # Adaptive process name width based on terminal columns
     name_col_width = max(10, min(19, cols - 35))
     mini_bar_width = max(6, min(16, cols - 40))
 
