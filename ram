@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-ram-tui: Real-time dynamic memory monitor for Linux
+ram-tui - Real-time dynamic terminal memory monitor for Linux
+Author: BlackFeather (https://github.com/BlackFeather-git)
+License: MIT
 """
 
 import os
@@ -11,23 +13,31 @@ import termios
 import tty
 import signal
 import socket
+import shutil
+import argparse
 from datetime import datetime
 
-# ANSI Color & Style Constants
-C_RESET = "\033[0m"
-C_BOLD = "\033[1m"
-C_DIM = "\033[2m"
+__version__ = "0.2.0"
 
-C_CYAN = "\033[38;2;80;200;220m"
-C_BLUE = "\033[38;2;100;160;255m"
-C_GREEN = "\033[38;2;75;210;110m"
-C_YELLOW = "\033[38;2;240;200;80m"
-C_RED = "\033[38;2;240;90;90m"
-C_GRAY = "\033[38;2;140;145;155m"
-C_DARK_GRAY = "\033[38;2;65;70;80m"
-C_WHITE = "\033[38;2;235;240;245m"
+# Support NO_COLOR standard (https://no-color.org) and dumb terminals
+USE_COLOR = sys.stdout.isatty() and "NO_COLOR" not in os.environ and os.environ.get("TERM") != "dumb"
 
-# Track blocks
+if USE_COLOR:
+    C_RESET = "\033[0m"
+    C_BOLD = "\033[1m"
+    C_DIM = "\033[2m"
+    C_CYAN = "\033[38;2;80;200;220m"
+    C_BLUE = "\033[38;2;100;160;255m"
+    C_GREEN = "\033[38;2;75;210;110m"
+    C_YELLOW = "\033[38;2;240;200;80m"
+    C_RED = "\033[38;2;240;90;90m"
+    C_GRAY = "\033[38;2;140;145;155m"
+    C_DARK_GRAY = "\033[38;2;65;70;80m"
+    C_WHITE = "\033[38;2;235;240;245m"
+else:
+    C_RESET = C_BOLD = C_DIM = ""
+    C_CYAN = C_BLUE = C_GREEN = C_YELLOW = C_RED = C_GRAY = C_DARK_GRAY = C_WHITE = ""
+
 BLOCK_FULL = "█"
 BLOCK_TRACK = "░"
 BLOCK_BORDER_L = "["
@@ -35,7 +45,9 @@ BLOCK_BORDER_R = "]"
 
 PAGE_SIZE = os.sysconf("SC_PAGE_SIZE") if hasattr(os, "sysconf") else 4096
 
+
 class TerminalManager:
+    """Manages raw terminal state, cursor visibility, and non-blocking input."""
     def __init__(self):
         self.is_tty = sys.stdout.isatty()
         self.orig_termios = None
@@ -47,13 +59,16 @@ class TerminalManager:
 
     def setup_raw(self):
         if self.is_tty and self.orig_termios:
-            tty.setcbreak(sys.stdin.fileno())
-            sys.stdout.write("\033[?25l")
-            sys.stdout.flush()
+            try:
+                tty.setcbreak(sys.stdin.fileno())
+                sys.stdout.write("\033[?25l")  # Hide cursor
+                sys.stdout.flush()
+            except Exception:
+                pass
 
     def restore(self):
         if self.is_tty:
-            sys.stdout.write(f"\033[?25h{C_RESET}\n")
+            sys.stdout.write(f"\033[?25h{C_RESET}\n")  # Show cursor & reset styles
             sys.stdout.flush()
             if self.orig_termios:
                 try:
@@ -61,7 +76,9 @@ class TerminalManager:
                 except Exception:
                     pass
 
+
 def format_bytes(bytes_val, precision=2):
+    """Formats raw bytes into human-readable B, KB, MB, or GB string."""
     if bytes_val < 1024:
         return f"{bytes_val} B"
     elif bytes_val < 1024**2:
@@ -71,7 +88,9 @@ def format_bytes(bytes_val, precision=2):
     else:
         return f"{bytes_val / (1024**3):.{precision}f} GB"
 
+
 def get_meminfo():
+    """Parses /proc/meminfo into a key-value dictionary in bytes."""
     info = {}
     try:
         with open("/proc/meminfo", "r") as f:
@@ -85,7 +104,9 @@ def get_meminfo():
         pass
     return info
 
+
 def get_swap_type():
+    """Detects whether active swap is compressed ZRAM, disk swap, or none."""
     has_zram = False
     has_disk = False
     try:
@@ -101,6 +122,7 @@ def get_swap_type():
                         has_disk = True
     except Exception:
         pass
+
     if has_zram and has_disk:
         return "zram + disk"
     elif has_zram:
@@ -108,9 +130,11 @@ def get_swap_type():
     elif has_disk:
         return "disk swap"
     else:
-        return "none"
+        return "no active swap"
+
 
 def get_processes(group_by_name=True):
+    """Scans /proc for active processes and calculates RSS memory usage."""
     procs = {}
     try:
         pids = [p for p in os.listdir("/proc") if p.isdigit()]
@@ -119,15 +143,18 @@ def get_processes(group_by_name=True):
 
     for pid in pids:
         try:
+            # Read statm for RSS pages
             with open(f"/proc/{pid}/statm", "r") as f:
                 fields = f.read().split()
-                if len(fields) >= 2:
-                    rss_pages = int(fields[1])
-                    rss_bytes = rss_pages * PAGE_SIZE
-                    if rss_bytes <= 0:
-                        continue
-            
+                if len(fields) < 2:
+                    continue
+                rss_pages = int(fields[1])
+                rss_bytes = rss_pages * PAGE_SIZE
+                if rss_bytes <= 0:
+                    continue
+
             comm = None
+            # Read comm (clean process name)
             try:
                 with open(f"/proc/{pid}/comm", "r") as f:
                     comm = f.read().strip()
@@ -135,6 +162,7 @@ def get_processes(group_by_name=True):
                 pass
 
             if not comm:
+                # Fallback to cmdline
                 try:
                     with open(f"/proc/{pid}/cmdline", "rb") as f:
                         cmd = f.read().decode(errors="ignore").replace("\x00", " ").strip()
@@ -155,13 +183,17 @@ def get_processes(group_by_name=True):
             else:
                 procs[pid] = {"name": f"{comm} [{pid}]", "rss": rss_bytes, "count": 1}
 
+        except (PermissionError, ProcessLookupError, FileNotFoundError, ValueError):
+            continue
         except Exception:
             continue
 
     sorted_procs = sorted(procs.values(), key=lambda x: x["rss"], reverse=True)
     return sorted_procs
 
+
 def render_bar(ratio, width=42):
+    """Renders the main memory usage bar with dynamic width and color scaling."""
     ratio = max(0.0, min(1.0, ratio))
     filled_len = int(round(width * ratio))
     empty_len = width - filled_len
@@ -177,7 +209,9 @@ def render_bar(ratio, width=42):
     bar_empty = f"{C_DARK_GRAY}{BLOCK_TRACK * empty_len}{C_RESET}"
     return f"{C_GRAY}{BLOCK_BORDER_L}{C_RESET}{bar_filled}{bar_empty}{C_GRAY}{BLOCK_BORDER_R}{C_RESET}"
 
+
 def render_mini_bar(ratio, width=16):
+    """Renders process proportional mini-bars."""
     ratio = max(0.0, min(1.0, ratio))
     filled_len = int(round(width * ratio))
     empty_len = width - filled_len
@@ -185,13 +219,17 @@ def render_mini_bar(ratio, width=16):
     bar_empty = f"{C_DARK_GRAY}{BLOCK_TRACK * empty_len}{C_RESET}"
     return f"{bar_filled}{bar_empty}"
 
+
 def main():
-    import argparse
-    parser = argparse.ArgumentParser(description="Real-time dynamic RAM monitor for Linux")
+    parser = argparse.ArgumentParser(
+        prog="ram",
+        description=f"ram-tui v{__version__} - Real-time dynamic memory monitor for Linux"
+    )
     parser.add_argument("-r", "--rate", type=int, default=100, help="Refresh rate in milliseconds (default: 100)")
     parser.add_argument("-n", "--count", type=int, default=8, help="Number of top processes to display (default: 8)")
     parser.add_argument("-1", "--once", action="store_true", help="Print a single snapshot and exit")
-    parser.add_argument("--no-group", action="store_true", help="Do not group processes by name (show individual PIDs)")
+    parser.add_argument("--no-group", action="store_true", help="Show individual process PIDs instead of grouping")
+    parser.add_argument("-v", "--version", action="version", version=f"%(prog)s v{__version__}")
     args = parser.parse_args()
 
     hostname = socket.gethostname()
@@ -215,6 +253,7 @@ def main():
 
     try:
         while True:
+            # Handle non-blocking interactive keybindings
             if not args.once and term.is_tty:
                 r, _, _ = select.select([sys.stdin], [], [], 0)
                 if r:
@@ -235,15 +274,18 @@ def main():
             if not paused or first_render:
                 mem = get_meminfo()
                 total = mem.get("MemTotal", 1)
-                available = mem.get("MemAvailable", 0)
+                available = mem.get("MemAvailable", mem.get("MemFree", 0))
                 used = max(0, total - available)
-                
+
+                # Commit metrics with fallback
                 commit_as = mem.get("Committed_AS", 0)
                 commit_limit = mem.get("CommitLimit", total)
                 commit_pct = (commit_as / commit_limit * 100) if commit_limit > 0 else 0
 
+                # Reclaimable Cache
                 cached_bytes = mem.get("Cached", 0) + mem.get("Buffers", 0) + mem.get("SReclaimable", 0)
 
+                # Swap metrics
                 swap_total = mem.get("SwapTotal", 0)
                 swap_free = mem.get("SwapFree", 0)
                 swap_used = max(0, swap_total - swap_free)
@@ -251,14 +293,19 @@ def main():
 
                 used_pct = (used / total) * 100
 
+                # Process calculations
                 procs = get_processes(group_by_name=group_procs)[:proc_count]
                 proc_sum_rss = sum(p["rss"] for p in procs)
                 proc_sum_pct = (proc_sum_rss / total) * 100
 
                 now_str = datetime.now().strftime("%a %H:%M:%S")
 
+                # Dynamic column responsive layout
+                cols = shutil.get_terminal_size((80, 24)).columns
+                bar_width = min(42, max(20, cols - 20))
+
                 lines = []
-                
+
                 # Header
                 header = f"{C_CYAN}{C_BOLD}RAM USAGE{C_RESET} {C_GRAY}—{C_RESET} {C_WHITE}{hostname}{C_RESET}  {C_GRAY}{now_str}{C_RESET}"
                 if paused:
@@ -266,7 +313,7 @@ def main():
                 lines.append(header)
 
                 # Main Usage Bar
-                bar_str = render_bar(used / total, width=42)
+                bar_str = render_bar(used / total, width=bar_width)
                 if used_pct < 60:
                     pct_color = C_GREEN
                 elif used_pct < 85:
@@ -293,10 +340,10 @@ def main():
                     count_str = f" ({p['count']})" if p.get("count", 1) > 1 else ""
                     name_full = f"{p['name']}{count_str}"
                     name_disp = (name_full[:18] + "~") if len(name_full) > 19 else name_full.ljust(19)
-                    
+
                     rss_str = format_bytes(p["rss"], precision=1).rjust(9)
                     p_pct = (p["rss"] / total) * 100
-                    
+
                     mini_bar = render_mini_bar(p["rss"] / max_proc_rss, width=16)
                     lines.append(f"{C_WHITE}{name_disp}{C_RESET} {C_GREEN}{rss_str}{C_RESET}  {mini_bar}  {C_GRAY}{p_pct:>4.1f}%{C_RESET}")
 
@@ -320,6 +367,7 @@ def main():
         pass
     finally:
         term.restore()
+
 
 if __name__ == "__main__":
     main()
