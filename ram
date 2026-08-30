@@ -1,0 +1,325 @@
+#!/usr/bin/env python3
+"""
+RAM - Real-time High-Precision Dynamic Memory TUI
+"""
+
+import os
+import sys
+import time
+import select
+import termios
+import tty
+import signal
+import socket
+from datetime import datetime
+
+# ANSI Color & Style Constants
+C_RESET = "\033[0m"
+C_BOLD = "\033[1m"
+C_DIM = "\033[2m"
+
+C_CYAN = "\033[38;2;80;200;220m"
+C_BLUE = "\033[38;2;100;160;255m"
+C_GREEN = "\033[38;2;75;210;110m"
+C_YELLOW = "\033[38;2;240;200;80m"
+C_RED = "\033[38;2;240;90;90m"
+C_GRAY = "\033[38;2;140;145;155m"
+C_DARK_GRAY = "\033[38;2;65;70;80m"
+C_WHITE = "\033[38;2;235;240;245m"
+
+# Track blocks
+BLOCK_FULL = "█"
+BLOCK_TRACK = "░"
+BLOCK_BORDER_L = "["
+BLOCK_BORDER_R = "]"
+
+PAGE_SIZE = os.sysconf("SC_PAGE_SIZE") if hasattr(os, "sysconf") else 4096
+
+class TerminalManager:
+    def __init__(self):
+        self.is_tty = sys.stdout.isatty()
+        self.orig_termios = None
+        if self.is_tty:
+            try:
+                self.orig_termios = termios.tcgetattr(sys.stdin)
+            except Exception:
+                self.orig_termios = None
+
+    def setup_raw(self):
+        if self.is_tty and self.orig_termios:
+            tty.setcbreak(sys.stdin.fileno())
+            sys.stdout.write("\033[?25l")
+            sys.stdout.flush()
+
+    def restore(self):
+        if self.is_tty:
+            sys.stdout.write(f"\033[?25h{C_RESET}\n")
+            sys.stdout.flush()
+            if self.orig_termios:
+                try:
+                    termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.orig_termios)
+                except Exception:
+                    pass
+
+def format_bytes(bytes_val, precision=2):
+    if bytes_val < 1024:
+        return f"{bytes_val} B"
+    elif bytes_val < 1024**2:
+        return f"{bytes_val / 1024:.{precision}f} KB"
+    elif bytes_val < 1024**3:
+        return f"{bytes_val / (1024**2):.{precision}f} MB"
+    else:
+        return f"{bytes_val / (1024**3):.{precision}f} GB"
+
+def get_meminfo():
+    info = {}
+    try:
+        with open("/proc/meminfo", "r") as f:
+            for line in f:
+                parts = line.split(":")
+                if len(parts) == 2:
+                    key = parts[0].strip()
+                    val_str = parts[1].strip().split()[0]
+                    info[key] = int(val_str) * 1024
+    except Exception:
+        pass
+    return info
+
+def get_swap_type():
+    has_zram = False
+    has_disk = False
+    try:
+        with open("/proc/swaps", "r") as f:
+            lines = f.readlines()[1:]
+            for line in lines:
+                parts = line.split()
+                if parts:
+                    path = parts[0]
+                    if "zram" in path:
+                        has_zram = True
+                    else:
+                        has_disk = True
+    except Exception:
+        pass
+    if has_zram and has_disk:
+        return "zram + disk"
+    elif has_zram:
+        return "zram - compressed, costs CPU not disk"
+    elif has_disk:
+        return "disk swap"
+    else:
+        return "none"
+
+def get_processes(group_by_name=True):
+    procs = {}
+    try:
+        pids = [p for p in os.listdir("/proc") if p.isdigit()]
+    except Exception:
+        pids = []
+
+    for pid in pids:
+        try:
+            with open(f"/proc/{pid}/statm", "r") as f:
+                fields = f.read().split()
+                if len(fields) >= 2:
+                    rss_pages = int(fields[1])
+                    rss_bytes = rss_pages * PAGE_SIZE
+                    if rss_bytes <= 0:
+                        continue
+            
+            comm = None
+            try:
+                with open(f"/proc/{pid}/comm", "r") as f:
+                    comm = f.read().strip()
+            except Exception:
+                pass
+
+            if not comm:
+                try:
+                    with open(f"/proc/{pid}/cmdline", "rb") as f:
+                        cmd = f.read().decode(errors="ignore").replace("\x00", " ").strip()
+                        if cmd:
+                            comm = os.path.basename(cmd.split()[0])
+                except Exception:
+                    pass
+
+            if not comm:
+                comm = f"PID {pid}"
+
+            if group_by_name:
+                if comm in procs:
+                    procs[comm]["rss"] += rss_bytes
+                    procs[comm]["count"] += 1
+                else:
+                    procs[comm] = {"name": comm, "rss": rss_bytes, "count": 1}
+            else:
+                procs[pid] = {"name": f"{comm} [{pid}]", "rss": rss_bytes, "count": 1}
+
+        except Exception:
+            continue
+
+    sorted_procs = sorted(procs.values(), key=lambda x: x["rss"], reverse=True)
+    return sorted_procs
+
+def render_bar(ratio, width=42):
+    ratio = max(0.0, min(1.0, ratio))
+    filled_len = int(round(width * ratio))
+    empty_len = width - filled_len
+
+    if ratio < 0.60:
+        fill_color = C_GREEN
+    elif ratio < 0.85:
+        fill_color = C_YELLOW
+    else:
+        fill_color = C_RED
+
+    bar_filled = f"{fill_color}{BLOCK_FULL * filled_len}{C_RESET}"
+    bar_empty = f"{C_DARK_GRAY}{BLOCK_TRACK * empty_len}{C_RESET}"
+    return f"{C_GRAY}{BLOCK_BORDER_L}{C_RESET}{bar_filled}{bar_empty}{C_GRAY}{BLOCK_BORDER_R}{C_RESET}"
+
+def render_mini_bar(ratio, width=16):
+    ratio = max(0.0, min(1.0, ratio))
+    filled_len = int(round(width * ratio))
+    empty_len = width - filled_len
+    bar_filled = f"{C_GREEN}{BLOCK_FULL * filled_len}{C_RESET}"
+    bar_empty = f"{C_DARK_GRAY}{BLOCK_TRACK * empty_len}{C_RESET}"
+    return f"{bar_filled}{bar_empty}"
+
+def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Real-time High-Precision RAM Monitor")
+    parser.add_argument("-r", "--rate", type=int, default=100, help="Refresh rate in milliseconds (default: 100)")
+    parser.add_argument("-n", "--count", type=int, default=8, help="Number of top processes to display (default: 8)")
+    parser.add_argument("-1", "--once", action="store_true", help="Print single snapshot and exit")
+    parser.add_argument("--no-group", action="store_true", help="Do not group processes by name (show individual PIDs)")
+    args = parser.parse_args()
+
+    hostname = socket.gethostname()
+    term = TerminalManager()
+
+    def cleanup_and_exit(signum=None, frame=None):
+        term.restore()
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, cleanup_and_exit)
+    signal.signal(signal.SIGTERM, cleanup_and_exit)
+
+    refresh_ms = max(20, args.rate)
+    proc_count = max(1, args.count)
+    group_procs = not args.no_group
+    paused = False
+    first_render = True
+
+    if not args.once:
+        term.setup_raw()
+
+    try:
+        while True:
+            if not args.once and term.is_tty:
+                r, _, _ = select.select([sys.stdin], [], [], 0)
+                if r:
+                    ch = sys.stdin.read(1)
+                    if ch in ("q", "Q", "\x03"):
+                        break
+                    elif ch in ("p", "P", " "):
+                        paused = not paused
+                    elif ch in ("+", "="):
+                        refresh_ms = max(20, refresh_ms - 25)
+                    elif ch in ("-", "_"):
+                        refresh_ms = min(2000, refresh_ms + 50)
+                    elif ch == "1":
+                        group_procs = True
+                    elif ch == "2":
+                        group_procs = False
+
+            if not paused or first_render:
+                mem = get_meminfo()
+                total = mem.get("MemTotal", 1)
+                available = mem.get("MemAvailable", 0)
+                used = max(0, total - available)
+                
+                commit_as = mem.get("Committed_AS", 0)
+                commit_limit = mem.get("CommitLimit", total)
+                commit_pct = (commit_as / commit_limit * 100) if commit_limit > 0 else 0
+
+                cached_bytes = mem.get("Cached", 0) + mem.get("Buffers", 0) + mem.get("SReclaimable", 0)
+
+                swap_total = mem.get("SwapTotal", 0)
+                swap_free = mem.get("SwapFree", 0)
+                swap_used = max(0, swap_total - swap_free)
+                swap_desc = get_swap_type()
+
+                used_pct = (used / total) * 100
+
+                procs = get_processes(group_by_name=group_procs)[:proc_count]
+                proc_sum_rss = sum(p["rss"] for p in procs)
+                proc_sum_pct = (proc_sum_rss / total) * 100
+
+                now_str = datetime.now().strftime("%a %H:%M:%S")
+
+                lines = []
+                
+                # Header
+                header = f"{C_CYAN}{C_BOLD}RAM USAGE{C_RESET} {C_GRAY}—{C_RESET} {C_WHITE}{hostname}{C_RESET}  {C_GRAY}{now_str}{C_RESET}"
+                if paused:
+                    header += f"  {C_YELLOW}[PAUSED]{C_RESET}"
+                lines.append(header)
+
+                # Main Usage Bar
+                bar_str = render_bar(used / total, width=42)
+                if used_pct < 60:
+                    pct_color = C_GREEN
+                elif used_pct < 85:
+                    pct_color = C_YELLOW
+                else:
+                    pct_color = C_RED
+                lines.append(f"{bar_str} {pct_color}{C_BOLD}{used_pct:.1f}%{C_RESET}")
+                lines.append("")
+
+                # Metrics table
+                lines.append(f"{C_WHITE}{C_BOLD}Used{C_RESET}    {C_GREEN}{format_bytes(used):<10}{C_RESET} {C_WHITE}{C_BOLD}Available{C_RESET}  {C_GREEN}{format_bytes(available):<10}{C_RESET} {C_WHITE}{C_BOLD}Total{C_RESET}   {C_WHITE}{format_bytes(total)}{C_RESET}")
+                lines.append(f"{C_WHITE}{C_BOLD}Commit{C_RESET}  {format_bytes(commit_as)} / {format_bytes(commit_limit)}  {C_GRAY}({commit_pct:.0f}% of commit limit){C_RESET}")
+                lines.append(f"{C_WHITE}{C_BOLD}Cached{C_RESET}  {format_bytes(cached_bytes):<10} {C_GRAY}(reclaimable on demand){C_RESET}")
+                lines.append(f"{C_WHITE}{C_BOLD}Swap{C_RESET}    {format_bytes(swap_used)} / {format_bytes(swap_total)}   {C_GRAY}({swap_desc}){C_RESET}")
+                lines.append("")
+
+                # Process Section Header
+                mode_str = "RESIDENT SET" if group_procs else "PROCESS PID"
+                lines.append(f"{C_CYAN}{C_BOLD}TOP {len(procs)} PROCESSES BY {mode_str}{C_RESET}")
+
+                # Process Rows
+                max_proc_rss = procs[0]["rss"] if procs else 1
+                for p in procs:
+                    count_str = f" ({p['count']})" if p.get("count", 1) > 1 else ""
+                    name_full = f"{p['name']}{count_str}"
+                    name_disp = (name_full[:18] + "~") if len(name_full) > 19 else name_full.ljust(19)
+                    
+                    rss_str = format_bytes(p["rss"], precision=1).rjust(9)
+                    p_pct = (p["rss"] / total) * 100
+                    
+                    mini_bar = render_mini_bar(p["rss"] / max_proc_rss, width=16)
+                    lines.append(f"{C_WHITE}{name_disp}{C_RESET} {C_GREEN}{rss_str}{C_RESET}  {mini_bar}  {C_GRAY}{p_pct:>4.1f}%{C_RESET}")
+
+                lines.append("")
+                # Footer summary
+                lines.append(f"{C_GRAY}These {len(procs)} account for  {C_WHITE}{format_bytes(proc_sum_rss)} ({proc_sum_pct:.0f}% of installed RAM){C_RESET}")
+
+                output = "\n".join(lines)
+
+                if args.once:
+                    print(output)
+                    break
+                else:
+                    sys.stdout.write(f"\033[H\033[J{output}\n")
+                    sys.stdout.flush()
+                    first_render = False
+
+            time.sleep(refresh_ms / 1000.0)
+
+    except KeyboardInterrupt:
+        pass
+    finally:
+        term.restore()
+
+if __name__ == "__main__":
+    main()
