@@ -1,7 +1,7 @@
 # ram-tui
 
 > *"Small enough to understand. Accurate enough to trust. Fast enough to leave running."*  
-> *"I made this because I wanted it - and now anyone can depend on it."*
+> *"I made this because I wanted it and it is heavily vibe coded! If it is useful for you please feel free to use it however you want."*
 
 A clean, real-time memory monitor for your terminal.
 
