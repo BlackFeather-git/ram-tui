@@ -1,6 +1,6 @@
 # ram-tui
 
-A lightweight, real-time dynamic terminal memory monitor for Linux with native ZRAM detection and grouped process breakdown.
+A lightweight, real-time dynamic terminal memory monitor for all systems (Linux, macOS & Windows) with native memory breakdown and process grouping.
 
 ```text
 RAM USAGE — my-laptop  Sun 21:47:21
@@ -23,7 +23,7 @@ These 8 account for  3.79 GB (12% of installed RAM)
 
 ## Installation
 
-### User install (no root needed)
+### Linux & macOS (User install)
 ```bash
 git clone https://github.com/BlackFeather-git/ram-tui.git
 cd ram-tui
@@ -32,9 +32,16 @@ cp ram ~/.local/bin/
 ```
 *(Make sure `~/.local/bin` is in your `$PATH`)*
 
-### System-wide install
+### System-wide (Linux/macOS)
 ```bash
 sudo cp ram /usr/local/bin/
+```
+
+### Windows (PowerShell / Command Prompt)
+```powershell
+git clone https://github.com/BlackFeather-git/ram-tui.git
+cd ram-tui
+python ram
 ```
 
 ## Usage
@@ -58,11 +65,12 @@ ram
 -n, --count <N>    Number of top processes to display (default: 8)
 -1, --once         Output a single snapshot and exit
 --no-group         Show individual process PIDs instead of grouping
+-v, --version      Show version number
 ```
 
 ## Requirements
-- Linux with `/proc` filesystem
-- Python 3.6+ (zero external dependencies)
+- Python 3.6+ on Linux, macOS, or Windows
+- Zero external dependencies (uses standard library only)
 
 ## License
 MIT
