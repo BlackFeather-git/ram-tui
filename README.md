@@ -1,33 +1,68 @@
-# ⚡ RAM - Real-Time Dynamic Memory TUI
+# ram-tui
 
-A high-precision, low-latency (100ms) dynamic terminal memory monitor designed for Linux with native ZRAM detection, smooth ANSI rendering, and process resident set aggregation.
+A lightweight, real-time dynamic terminal memory monitor for Linux with native ZRAM detection and grouped process breakdown.
 
----
+```text
+RAM USAGE — my-laptop  Sun 21:47:21
+[██████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 13.9%
 
-## 🚀 Features
+Used    4.31 GB    Available  26.70 GB   Total   31.01 GB
+Commit  9.18 GB / 46.51 GB  (20% of commit limit)
+Cached  8.43 GB    (reclaimable on demand)
+Swap    1.55 MB / 31.01 GB   (zram - compressed, costs CPU not disk)
 
-- **Exact Screenshot Aesthetics**: Clean typography, colored gradient usage bars, and mini process graphs.
-- **100ms Live Refresh Rate**: Sub-millisecond direct `/proc` kernel parsing with zero flickering.
-- **ZRAM Awareness**: Automatically detects whether swap is ZRAM (compressed in RAM) or physical disk.
-- **Process Aggregation**: Groups multi-instance applications (e.g. `brave (12)`, `firefox (8)`, `gjs (3)`) with accurate combined Resident Set Size (RSS).
-- **Interactive Controls**:
-  - `q` / `Ctrl+C`: Quit
-  - `Space` / `p`: Pause / Resume live stream
-  - `+` / `-`: Increase / Decrease refresh speed (from 20ms to 2000ms)
-  - `1` / `2`: Toggle between Grouped process view and Individual PID view
-- **CLI Options**:
-  - `ram`: Live interactive 100ms TUI monitor
-  - `ram --once` / `ram -1`: Single-shot snapshot
-  - `ram -r 50`: Custom refresh rate in milliseconds
-  - `ram -n 12`: Display top 12 processes instead of 8
+TOP 8 PROCESSES BY RESIDENT SET
+brave (12)             2.1 GB  ████████████████   6.7%
+gnome-shell          657.2 MB  █████░░░░░░░░░░░   2.1%
+code (6)             384.6 MB  ███░░░░░░░░░░░░░   1.2%
+Xwayland             197.7 MB  █░░░░░░░░░░░░░░░   0.6%
+kitty                160.9 MB  █░░░░░░░░░░░░░░░   0.5%
 
----
+These 8 account for  3.79 GB (12% of installed RAM)
+```
 
-## 📁 Installation
+## Installation
 
-The binary is located at `/home/raven/Projects/ram-tui/ram` and symlinked to `~/.local/bin/ram`.
+### User install (no root needed)
+```bash
+git clone https://github.com/BlackFeather-git/ram-tui.git
+cd ram-tui
+mkdir -p ~/.local/bin
+cp ram ~/.local/bin/
+```
+*(Make sure `~/.local/bin` is in your `$PATH`)*
 
-You can launch it anytime from any terminal by typing:
+### System-wide install
+```bash
+sudo cp ram /usr/local/bin/
+```
+
+## Usage
+
+Simply run:
 ```bash
 ram
 ```
+
+### Keybindings
+| Key | Action |
+| --- | --- |
+| `q` / `Ctrl+C` | Quit |
+| `Space` / `p` | Pause / resume live view |
+| `+` / `-` | Increase / decrease refresh rate (20ms – 2000ms) |
+| `1` / `2` | Toggle grouped processes vs individual PIDs |
+
+### Options
+```text
+-r, --rate <ms>    Refresh rate in milliseconds (default: 100)
+-n, --count <N>    Number of top processes to display (default: 8)
+-1, --once         Output a single snapshot and exit
+--no-group         Show individual process PIDs instead of grouping
+```
+
+## Requirements
+- Linux with `/proc` filesystem
+- Python 3.6+ (zero external dependencies)
+
+## License
+MIT

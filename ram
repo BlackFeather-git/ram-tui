@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RAM - Real-time High-Precision Dynamic Memory TUI
+ram-tui: Real-time dynamic memory monitor for Linux
 """
 
 import os
@@ -187,10 +187,10 @@ def render_mini_bar(ratio, width=16):
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description="Real-time High-Precision RAM Monitor")
+    parser = argparse.ArgumentParser(description="Real-time dynamic RAM monitor for Linux")
     parser.add_argument("-r", "--rate", type=int, default=100, help="Refresh rate in milliseconds (default: 100)")
     parser.add_argument("-n", "--count", type=int, default=8, help="Number of top processes to display (default: 8)")
-    parser.add_argument("-1", "--once", action="store_true", help="Print single snapshot and exit")
+    parser.add_argument("-1", "--once", action="store_true", help="Print a single snapshot and exit")
     parser.add_argument("--no-group", action="store_true", help="Do not group processes by name (show individual PIDs)")
     args = parser.parse_args()
 
