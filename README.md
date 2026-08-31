@@ -35,20 +35,37 @@
 
 ## Installation
 
-### One-Line Script (Linux / macOS)
+### 🐧 Linux & 🍎 macOS (Quick Install)
 ```bash
 curl -sSL https://raw.githubusercontent.com/BlackFeather-git/ram-tui/main/install.sh | bash
 ```
 
-### Arch Linux (AUR)
-```bash
-yay -S ram-tui
+### 🪟 Windows (PowerShell One-Liner)
+Run in PowerShell or Windows Terminal:
+```powershell
+irm https://raw.githubusercontent.com/BlackFeather-git/ram-tui/main/install.ps1 | iex
 ```
 
-### Manual Download
+### 📦 Windows (Scoop)
+```powershell
+scoop install https://raw.githubusercontent.com/BlackFeather-git/ram-tui/main/packaging/scoop/ram.json
+```
+
+### 🐧 Arch Linux (AUR)
 ```bash
-curl -sSL https://raw.githubusercontent.com/BlackFeather-git/ram-tui/main/ram -o ~/.local/bin/ram
-chmod +x ~/.local/bin/ram
+yay -S ram-tui
+# or
+paru -S ram-tui
+```
+
+### 🛠️ Manual Installation (Any OS)
+Download the standalone `ram` file to any directory in your `PATH`:
+```bash
+# Linux / macOS
+curl -sSL https://raw.githubusercontent.com/BlackFeather-git/ram-tui/main/ram -o ~/.local/bin/ram && chmod +x ~/.local/bin/ram
+
+# Windows (Command Prompt / PowerShell)
+curl -sSL https://raw.githubusercontent.com/BlackFeather-git/ram-tui/main/ram -o %USERPROFILE%\.local\bin\ram.py
 ```
 
 ---
