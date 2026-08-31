@@ -1059,10 +1059,14 @@ def verify_release_signature(data, signature_b64):
     if not signature_b64 or not isinstance(signature_b64, str):
         return False
     try:
-        sig_bytes = base64.b64decode(signature_b64.strip())
+        sig_bytes = base64.b64decode(signature_b64.strip(), validate=True)
         if len(sig_bytes) != 256:
             return False
         sig_int = int.from_bytes(sig_bytes, "big")
+        # Strict RSA range check: representative must strictly satisfy 0 < s < n
+        if sig_int <= 0 or sig_int >= RELEASE_PUBLIC_KEY_N:
+            return False
+
         decrypted_int = pow(sig_int, RELEASE_PUBLIC_KEY_E, RELEASE_PUBLIC_KEY_N)
         k = (RELEASE_PUBLIC_KEY_N.bit_length() + 7) // 8
         em = decrypted_int.to_bytes(k, "big")

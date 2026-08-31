@@ -500,6 +500,16 @@ class UpdateManagerTests(unittest.TestCase):
             ram.UpdateManager._validate_source(source, "0.6.0", expected_sha256=sha, expected_sig=None)
         self.assertIn("cryptographic maintainer digital signature verification failed", str(ctx.exception))
 
+        # 5. Signature representative >= RSA modulus N -> strictly rejected
+        oversized_int = ram.RELEASE_PUBLIC_KEY_N + 5
+        oversized_sig_bytes = oversized_int.to_bytes(256, "big")
+        oversized_sig_b64 = base64.b64encode(oversized_sig_bytes).decode("ascii")
+        self.assertFalse(ram.verify_release_signature(source, oversized_sig_b64))
+
+        # 6. Invalid Base64 alphabet -> strictly rejected
+        invalid_b64_sig = "!!!" + fake_sig[3:]
+        self.assertFalse(ram.verify_release_signature(source, invalid_b64_sig))
+
     def test_source_size_boundaries(self):
         valid_header = b"#!/usr/bin/env python3\n__version__ = '0.6.0'\nif __name__ == '__main__': pass\n"
         exact_2mb = valid_header + b"# " + (b"A" * (2 * 1024 * 1024 - len(valid_header) - 3)) + b"\n"
