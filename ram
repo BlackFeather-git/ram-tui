@@ -346,7 +346,7 @@ def run_command(cmd, timeout=1.0):
 
 
 class TerminalManager:
-    """Manages raw terminal state, cursor visibility, Windows mode, and non-blocking input."""
+    """Manages raw terminal state, alternate screen buffer, cursor, and non-blocking input."""
     def __init__(self):
         self.is_tty = sys.stdout.isatty() and sys.stdin.isatty()
         self.orig_termios = None
@@ -391,7 +391,8 @@ class TerminalManager:
                     tty.setcbreak(self.fd)
                 except Exception:
                     pass
-            sys.stdout.write("\033[?25l")
+            # Switch to Alternate Screen Buffer, hide cursor, and clear screen
+            sys.stdout.write("\033[?1049h\033[?25l\033[H\033[2J")
             sys.stdout.flush()
 
     def restore(self):
@@ -401,7 +402,8 @@ class TerminalManager:
 
         if self.is_tty:
             try:
-                sys.stdout.write("\033[?25h\033[0m\n")
+                # Restore main screen buffer and unhide cursor
+                sys.stdout.write("\033[?1049l\033[?25h\033[0m")
                 sys.stdout.flush()
             except Exception:
                 pass
@@ -876,7 +878,6 @@ def render_meter_track(ratio, width=32, pal=None, symbol="block"):
         c = pal["CRITICAL"]
 
     if symbol == "braille":
-        # 2-step horizontal sub-character: left half ⡇, full ⣿
         total_steps = int(round(ratio * width * 2))
         full_blocks = total_steps // 2
         rem_steps = total_steps % 2
@@ -901,7 +902,7 @@ def visible_len(s):
 
 
 def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", theme="default", symbol="block", enable_color=True, show_help=False):
-    """Renders clean, breathable, modern dashboard across all display modes."""
+    """Renders clean, breathable, modern dashboard across all display modes with height bounds."""
     pal = get_palette(theme, enable_color)
     hostname = sanitize_text(socket.gethostname())
     now_str = datetime.now().strftime("%H:%M:%S")
@@ -911,7 +912,9 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
     used = mem.get("used", 0)
     used_pct = percentage(used, total)
 
-    cols = shutil.get_terminal_size((80, 24)).columns
+    term_size = shutil.get_terminal_size((80, 24))
+    cols = term_size.columns
+    rows = term_size.lines
 
     r = pal["RESET"]
     t = pal["TEXT"]
@@ -957,7 +960,6 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
     gap = max(2, rule_w - visible_len(header_left) - visible_len(clock))
     lines.append(f"{header_left}{' ' * gap}{clock}")
     lines.append(rule)
-    lines.append("")
 
     # Hero usage bar
     bar_width = clamp(cols - 24, 16, 64)
@@ -965,12 +967,14 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
     pct_color = g if used_pct < 60 else (w if used_pct < 85 else crit)
     lines.append(meter)
     lines.append(f"{pct_color}{bold}{used_pct:>5.1f}%{r}  {t}{bold}{format_bytes(used, 2)}{r}{m} used of {r}{t}{format_bytes(total, 2)}{r}")
-    lines.append("")
 
     # Clean Unboxed Metrics Breakdown Grid
     commit_str = f"{format_bytes(mem.get('commit_as') or 0, 1)}/{format_bytes(mem.get('commit_limit') or total, 1)}" if mem.get("commit_as") is not None else "N/A"
     cached_str = format_bytes(mem.get("cached", 0), 1) if mem.get("cached") is not None else "N/A"
     swap_str = f"{format_bytes(mem.get('swap_used') or 0, 1)} ({mem.get('swap_desc', '')})"
+
+    if rows >= 24:
+        lines.append("")
 
     if cols >= 68:
         lines.append(f"{m}USED          AVAILABLE     TOTAL         COMMIT              CACHED        SWAP{r}")
@@ -991,31 +995,35 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
         ):
             lines.append(f"{m}{label:<11}{r}{color}{bold}{value}{r}")
 
-    # 4. PROCESS RANKING (Only in HERO mode)
+    # 4. PROCESS RANKING (Only in HERO mode, clamped to terminal height)
     if mode == "hero" and procs:
-        lines.append("")
-        lines.append(rule)
-        lines.append("")
-        mode_label = "RESIDENT SET" if group_procs else "PID"
-        lines.append(f"{m}PROCESS ({mode_label}){r}        {m}RSS{r}        {m}USAGE{r}                {m}SHARE{r}")
+        # Calculate exactly how many process rows fit without exceeding terminal height
+        occupied_lines = len(lines) + 3  # +3 for header, divider, and footer
+        available_slots = max(0, rows - occupied_lines - 1)
+        visible_procs = procs[:available_slots] if available_slots > 0 else []
 
-        max_p_rss = procs[0]["rss"] if procs else 1
-        name_width = clamp(cols - 48, 10, 22)
-        p_bar_w = clamp(cols - 46, 6, 20)
+        if visible_procs:
+            if rows >= 26:
+                lines.append("")
+            mode_label = "RESIDENT SET" if group_procs else "PID"
+            lines.append(f"{m}PROCESS ({mode_label}){r}        {m}RSS{r}        {m}USAGE{r}                {m}SHARE{r}")
 
-        for p in procs:
-            count_str = f" ({p['count']})" if p.get("count", 1) > 1 else ""
-            name_full = f"{p['name']}{count_str}"
-            name_disp = (name_full[:name_width - 1] + "~") if len(name_full) > name_width else name_full.ljust(name_width)
+            max_p_rss = procs[0]["rss"] if procs else 1
+            name_width = clamp(cols - 48, 10, 22)
+            p_bar_w = clamp(cols - 46, 6, 20)
 
-            rss_str = format_bytes(p["rss"], precision=1).rjust(8)
-            p_pct = percentage(p["rss"], total)
-            p_meter = render_meter_track(p["rss"] / max_p_rss if max_p_rss > 0 else 0, width=p_bar_w, pal=pal, symbol=symbol)
+            for p in visible_procs:
+                count_str = f" ({p['count']})" if p.get("count", 1) > 1 else ""
+                name_full = f"{p['name']}{count_str}"
+                name_disp = (name_full[:name_width - 1] + "~") if len(name_full) > name_width else name_full.ljust(name_width)
 
-            lines.append(f"{t}{name_disp}{r}   {g}{rss_str}{r}   {p_meter}   {m}{p_pct:>4.1f}%{r}")
+                rss_str = format_bytes(p["rss"], precision=1).rjust(8)
+                p_pct = percentage(p["rss"], total)
+                p_meter = render_meter_track(p["rss"] / max_p_rss if max_p_rss > 0 else 0, width=p_bar_w, pal=pal, symbol=symbol)
+
+                lines.append(f"{t}{name_disp}{r}   {g}{rss_str}{r}   {p_meter}   {m}{p_pct:>4.1f}%{r}")
 
     # Quiet footer
-    lines.append("")
     lines.append(rule)
     lines.append(f"{m}{dim}q quit   p pause   t theme   s symbol   m mode   1/2 group   +/- rate{r}")
 
@@ -1166,7 +1174,7 @@ def main():
                     show_help=show_help
                 )
                 try:
-                    sys.stdout.write(f"\033[H\033[J{output}\n")
+                    sys.stdout.write(f"\033[H\033[2J{output}")
                     sys.stdout.flush()
                 except BrokenPipeError:
                     break
