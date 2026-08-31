@@ -12,6 +12,7 @@ API and raw CDN source downloads, validating the entire update lifecycle:
 6. Package-manager conflict detection and --force override handling.
 """
 
+import base64
 import hashlib
 import http.server
 import json
@@ -79,6 +80,34 @@ class MockGitHubHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
             self.wfile.write(payload)
+        elif self.path.endswith("/ram.sig"):
+            script_content = (
+                "#!/usr/bin/env python3\n"
+                f'__version__ = "{self.mock_payload_version}"\n\n'
+                "def main():\n"
+                "    print('ram-tui updated binary running')\n\n"
+                'if __name__ == "__main__":\n'
+                "    main()\n"
+            ).encode("utf-8")
+            key_file = "/home/raven/.config/ram-tui/keys/maintainer_release.key"
+            with tempfile.NamedTemporaryFile("wb", delete=False) as df, tempfile.NamedTemporaryFile("wb", delete=False) as sf:
+                df.write(script_content)
+                df.flush()
+                df_name, sf_name = df.name, sf.name
+            try:
+                subprocess.check_call(["openssl", "dgst", "-sha256", "-sign", key_file, "-out", sf_name, df_name])
+                with open(sf_name, "rb") as f:
+                    sig_payload = base64.b64encode(f.read()) + b"\n"
+            finally:
+                if os.path.exists(df_name):
+                    os.unlink(df_name)
+                if os.path.exists(sf_name):
+                    os.unlink(sf_name)
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.send_header("Content-Length", str(len(sig_payload)))
+            self.end_headers()
+            self.wfile.write(sig_payload)
         else:
             self.send_response(404)
             self.end_headers()

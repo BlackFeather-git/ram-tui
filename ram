@@ -9,6 +9,7 @@ License: MIT
 
 import argparse
 import ast
+import base64
 import ctypes
 import hashlib
 import json
@@ -1037,6 +1038,44 @@ UPDATE_VERSION_RE = re.compile(
     r"(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$"
 )
 
+# Maintainer Root of Trust: Embedded RSA-2048 Public Verification Key
+RELEASE_PUBLIC_KEY_N = int(
+    "9914D5370F8E6A3154C27101021400390B2D4B5AC775670EE25C5EE0F2A1E6AC"
+    "2677C9D94926EDF062443CE740B38193D25D67678055EE9731721163FF98BF0E"
+    "099BD72DA38D9198C3402E4C7B1F0CA144F8609854135DDED950ACB00716C3BD"
+    "B41F33ED970DC5A9131DEE795B138D0B89F897C9E67E2CC652994C1D4CAB64A7"
+    "D0D8189F8C04CCF51848A5836F9EEC939D061A72487A3C9BE317A2D8BD44C6C8"
+    "A50E7C69755AC7FFF2A6AD15A9ECBB773B16005193C45206F366D1E4DC050BA4"
+    "2CB899E3EB4F8B1002B084EB596221934CE49B6DABE4CEA4C21F04719819375D"
+    "56D84CC575E3459C8D7E34C88302444D0462C0AEBBE9EE3D7FDEBE3FFAA316AD",
+    16,
+)
+RELEASE_PUBLIC_KEY_E = 65537
+ASN1_SHA256_PREFIX = b"\x30\x31\x30\x0d\x06\x09\x60\x86\x48\x01\x65\x03\x04\x02\x01\x05\x00\x04\x20"
+
+
+def verify_release_signature(data, signature_b64):
+    """Verify cryptographic RSA-2048 PKCS#1 v1.5 release signature against maintainer root of trust."""
+    if not signature_b64 or not isinstance(signature_b64, str):
+        return False
+    try:
+        sig_bytes = base64.b64decode(signature_b64.strip())
+        if len(sig_bytes) != 256:
+            return False
+        sig_int = int.from_bytes(sig_bytes, "big")
+        decrypted_int = pow(sig_int, RELEASE_PUBLIC_KEY_E, RELEASE_PUBLIC_KEY_N)
+        k = (RELEASE_PUBLIC_KEY_N.bit_length() + 7) // 8
+        em = decrypted_int.to_bytes(k, "big")
+
+        expected_digest = ASN1_SHA256_PREFIX + hashlib.sha256(data).digest()
+        if not (em.startswith(b"\x00\x01") and em.endswith(expected_digest)):
+            return False
+
+        pad = em[2:-len(expected_digest)]
+        return pad.startswith(b"\xff") and pad.endswith(b"\x00") and all(b == 255 for b in pad[:-1])
+    except Exception:
+        return False
+
 
 def parse_semver(value):
     """Parse a strict MAJOR.MINOR.PATCH semantic version adhering strictly to SemVer 2.0.0."""
@@ -1368,8 +1407,20 @@ class UpdateManager:
         except Exception as exc:
             raise ValueError(f"failed to retrieve cryptographic SHA-256 release digest: {exc}") from exc
 
+    def _fetch_expected_signature(self, latest_version):
+        user_agent = f"ram-tui/{self.current_version}"
+        url = f"{UPDATE_RAW_BASE_URL}/v{latest_version}/ram.sig"
+        try:
+            raw = self._request(url, user_agent, max_size=2048)
+            text = raw.decode("utf-8").strip()
+            if len(text) >= 128:
+                return text
+            raise ValueError(f"malformed digital release signature for v{latest_version}")
+        except Exception as exc:
+            raise ValueError(f"failed to retrieve cryptographic release signature: {exc}") from exc
+
     @staticmethod
-    def _validate_source(data, expected_version, expected_sha256=None, filename="ram"):
+    def _validate_source(data, expected_version, expected_sha256=None, expected_sig=None, filename="ram"):
         if len(data) > UPDATE_MAX_SOURCE_SIZE:
             raise ValueError("downloaded source exceeds safety limit")
         if not data:
@@ -1387,19 +1438,23 @@ class UpdateManager:
                 f"expected {clean_expected[:12]}..., computed {computed_sha[:12]}..."
             )
 
-        # 2. UTF-8 decoding
+        # 2. Independent Root of Trust: Maintainer Digital RSA-2048 Signature Verification
+        if not expected_sig or not verify_release_signature(data, expected_sig):
+            raise ValueError("cryptographic maintainer digital signature verification failed (independent root of trust violation)")
+
+        # 3. UTF-8 decoding
         try:
             source = data.decode("utf-8")
         except UnicodeDecodeError as exc:
             raise ValueError("downloaded file is not valid UTF-8 Python source") from exc
 
-        # 3. Bytecode compilation
+        # 4. Bytecode compilation
         try:
             compile(source, filename, "exec")
         except SyntaxError as exc:
             raise ValueError(f"downloaded file contains invalid Python syntax: {exc}") from exc
 
-        # 4. AST semantic verification
+        # 5. AST semantic verification
         try:
             tree = ast.parse(source, filename=filename)
         except Exception as exc:
@@ -1594,7 +1649,8 @@ class UpdateManager:
 
             data = self._download_source(latest)
             expected_sha256 = self._fetch_expected_sha256(latest)
-            self._validate_source(data, latest, expected_sha256=expected_sha256, filename=real_target)
+            expected_sig = self._fetch_expected_signature(latest)
+            self._validate_source(data, latest, expected_sha256=expected_sha256, expected_sig=expected_sig, filename=real_target)
             self._atomic_replace(data, real_target)
 
             msg = f"ram-tui updated successfully: v{self.current_version} -> v{latest}"

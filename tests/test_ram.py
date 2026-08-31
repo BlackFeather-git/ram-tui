@@ -1,3 +1,5 @@
+import base64
+import hashlib
 import io
 import json
 import os
@@ -11,6 +13,26 @@ from importlib.machinery import SourceFileLoader
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 ram = SourceFileLoader("ram_tui_under_test", os.path.join(ROOT, "ram")).load_module()
+
+MAINTAINER_KEY_PATH = "/home/raven/.config/ram-tui/keys/maintainer_release.key"
+
+
+def sign_test_payload(data):
+    if not os.path.exists(MAINTAINER_KEY_PATH):
+        return ""
+    with tempfile.NamedTemporaryFile("wb", delete=False) as df, tempfile.NamedTemporaryFile("wb", delete=False) as sf:
+        df.write(data)
+        df.flush()
+        df_name, sf_name = df.name, sf.name
+    try:
+        subprocess.check_call(["openssl", "dgst", "-sha256", "-sign", MAINTAINER_KEY_PATH, "-out", sf_name, df_name])
+        with open(sf_name, "rb") as f:
+            return base64.b64encode(f.read()).decode("ascii")
+    finally:
+        if os.path.exists(df_name):
+            os.unlink(df_name)
+        if os.path.exists(sf_name):
+            os.unlink(sf_name)
 
 
 class FormattingAndSanitizationTests(unittest.TestCase):
@@ -356,10 +378,10 @@ class UpdateManagerTests(unittest.TestCase):
             'print("malicious or invalid source")\n'
         ).encode("utf-8")
 
-        import hashlib
         fake_sha = hashlib.sha256(fake_source).hexdigest()
+        fake_sig = sign_test_payload(fake_source)
         with self.assertRaises(ValueError) as ctx:
-            ram.UpdateManager._validate_source(fake_source, "0.6.0", expected_sha256=fake_sha, filename="test")
+            ram.UpdateManager._validate_source(fake_source, "0.6.0", expected_sha256=fake_sha, expected_sig=fake_sig, filename="test")
         self.assertIn("module-level __version__", str(ctx.exception))
 
     def test_sha256_cryptographic_verification(self):
@@ -369,15 +391,15 @@ class UpdateManagerTests(unittest.TestCase):
             "if __name__ == \"__main__\":\n"
             "    pass\n"
         ).encode("utf-8")
-        import hashlib
         correct_sha = hashlib.sha256(source).hexdigest()
+        correct_sig = sign_test_payload(source)
 
-        # Should pass with matching SHA-256
-        ram.UpdateManager._validate_source(source, "0.6.0", expected_sha256=correct_sha, filename="test")
+        # Should pass with matching SHA-256 and valid digital signature
+        ram.UpdateManager._validate_source(source, "0.6.0", expected_sha256=correct_sha, expected_sig=correct_sig, filename="test")
 
         # Should strictly fail with mismatched SHA-256
         with self.assertRaises(ValueError) as ctx:
-            ram.UpdateManager._validate_source(source, "0.6.0", expected_sha256="deadbeef" * 8, filename="test")
+            ram.UpdateManager._validate_source(source, "0.6.0", expected_sha256="deadbeef" * 8, expected_sig=correct_sig, filename="test")
         self.assertIn("cryptographic integrity verification failed", str(ctx.exception))
 
     def test_package_manager_conflict_detection(self):
@@ -435,37 +457,65 @@ class UpdateManagerTests(unittest.TestCase):
 
     def test_sha_digest_strictly_enforced(self):
         source = b"#!/usr/bin/env python3\n__version__ = '0.6.0'\nif __name__ == '__main__': pass\n"
+        sig = sign_test_payload(source)
 
         # Missing SHA digest
         with self.assertRaises(ValueError) as ctx:
-            ram.UpdateManager._validate_source(source, "0.6.0", expected_sha256=None)
+            ram.UpdateManager._validate_source(source, "0.6.0", expected_sha256=None, expected_sig=sig)
         self.assertIn("missing cryptographic SHA-256", str(ctx.exception))
 
         # Malformed / short SHA digest
         with self.assertRaises(ValueError) as ctx:
-            ram.UpdateManager._validate_source(source, "0.6.0", expected_sha256="abc123")
+            ram.UpdateManager._validate_source(source, "0.6.0", expected_sha256="abc123", expected_sig=sig)
         self.assertIn("invalid or missing cryptographic SHA-256", str(ctx.exception))
 
         # Non-hex SHA digest
         with self.assertRaises(ValueError) as ctx:
-            ram.UpdateManager._validate_source(source, "0.6.0", expected_sha256="g" * 64)
+            ram.UpdateManager._validate_source(source, "0.6.0", expected_sha256="g" * 64, expected_sig=sig)
         self.assertIn("invalid or missing cryptographic SHA-256", str(ctx.exception))
+
+    def test_maintainer_rsa_signature_root_of_trust(self):
+        source = b"#!/usr/bin/env python3\n__version__ = '0.6.0'\nif __name__ == '__main__': pass\n"
+        sha = hashlib.sha256(source).hexdigest()
+        sig = sign_test_payload(source)
+
+        # 1. Authentic signature -> passes
+        ram.UpdateManager._validate_source(source, "0.6.0", expected_sha256=sha, expected_sig=sig)
+
+        # 2. Tampered source with same signature -> rejected
+        tampered = source + b"# tampering\n"
+        tampered_sha = hashlib.sha256(tampered).hexdigest()
+        with self.assertRaises(ValueError) as ctx:
+            ram.UpdateManager._validate_source(tampered, "0.6.0", expected_sha256=tampered_sha, expected_sig=sig)
+        self.assertIn("cryptographic maintainer digital signature verification failed", str(ctx.exception))
+
+        # 3. Forged / invalid signature -> rejected
+        fake_sig = base64.b64encode(b"Z" * 256).decode("ascii")
+        with self.assertRaises(ValueError) as ctx:
+            ram.UpdateManager._validate_source(source, "0.6.0", expected_sha256=sha, expected_sig=fake_sig)
+        self.assertIn("cryptographic maintainer digital signature verification failed", str(ctx.exception))
+
+        # 4. Missing signature -> rejected
+        with self.assertRaises(ValueError) as ctx:
+            ram.UpdateManager._validate_source(source, "0.6.0", expected_sha256=sha, expected_sig=None)
+        self.assertIn("cryptographic maintainer digital signature verification failed", str(ctx.exception))
 
     def test_source_size_boundaries(self):
         valid_header = b"#!/usr/bin/env python3\n__version__ = '0.6.0'\nif __name__ == '__main__': pass\n"
         exact_2mb = valid_header + b"# " + (b"A" * (2 * 1024 * 1024 - len(valid_header) - 3)) + b"\n"
         self.assertEqual(len(exact_2mb), 2 * 1024 * 1024)
 
-        import hashlib
         exact_sha = hashlib.sha256(exact_2mb).hexdigest()
+        exact_sig = sign_test_payload(exact_2mb)
         # Exactly 2 MiB -> Passes
-        ram.UpdateManager._validate_source(exact_2mb, "0.6.0", expected_sha256=exact_sha)
+        ram.UpdateManager._validate_source(exact_2mb, "0.6.0", expected_sha256=exact_sha, expected_sig=exact_sig)
 
         # 2 MiB + 1 byte -> Rejected
         oversized = exact_2mb + b"X"
         oversized_sha = hashlib.sha256(oversized).hexdigest()
+        oversized_sig = sign_test_payload(oversized)
         with self.assertRaises(ValueError) as ctx:
-            ram.UpdateManager._validate_source(oversized, "0.6.0", expected_sha256=oversized_sha)
+            ram.UpdateManager._validate_source(oversized, "0.6.0", expected_sha256=oversized_sha, expected_sig=oversized_sig)
         self.assertIn("exceeds safety limit", str(ctx.exception))
 
     def test_non_ram_binary_target_rejection(self):
