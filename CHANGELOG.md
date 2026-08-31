@@ -5,6 +5,20 @@ All notable changes to `ram-tui` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0-beta.3] - 2026-08-31
+
+### Fixed
+- **Terminal Buffer & Scrollback Fix**: Enabled Alternate Screen Buffer (`\033[?1049h` / `\033[?1049l`) to eliminate repeated header duplication and scrollback pollution in GPU terminals (Kitty, Alacritty, WezTerm).
+- **Dynamic Viewport Height Clamping**: Automatically adjusts visible process slots to ensure total layout height never exceeds terminal rows or triggers bottom-edge scroll events.
+- **Dracula Theme Realignment**: Fixed Dracula theme palette to use signature Dracula Purple (`#bd93f9`), Pink (`#ff79c6`), and Comment (`#6272a4`) accents.
+- **Braille Symbol Rendering**: Implemented clean 2-column horizontal Braille progression (`⣿` full, `⡇` half) with unambiguous track rendering (`░`).
+
+### Added
+- **Braille Graph Symbol Engine**: Added `--symbol {block,braille}` CLI option and interactive `s` / `S` live toggle hotkey.
+- **Expanded Theme Library**: Added `rose-pine`, `everforest`, `kanagawa`, `monokai`, and `solarized` (13 themes total).
+
+---
+
 ## [0.5.0-beta.2] - 2026-08-31
 
 ### Changed
