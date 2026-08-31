@@ -1159,16 +1159,16 @@ def detect_package_manager_install(target_path):
     """Detect if target path appears to belong to a managed system package."""
     if not target_path:
         return None
-    norm = os.path.normpath(os.path.abspath(target_path)).lower()
+    raw_norm = str(target_path).replace("\\", "/").lower()
+    abs_norm = os.path.normpath(os.path.abspath(target_path)).replace("\\", "/").lower()
 
-    if norm.startswith(("/usr/bin", "/usr/sbin", "/bin", "/sbin", "/usr/lib")):
-        return "system package manager (e.g. pacman, apt, dnf)"
-
-    if norm.startswith(("/opt/homebrew", "/usr/local/cellar", "/home/linuxbrew/.linuxbrew")):
-        return "Homebrew (brew)"
-
-    if "\\scoop\\apps\\" in norm or "\\scoop\\shims\\" in norm or "/scoop/apps/" in norm or "/scoop/shims/" in norm:
-        return "Scoop"
+    for norm in (raw_norm, abs_norm):
+        if norm.startswith(("/usr/bin", "/usr/sbin", "/bin", "/sbin", "/usr/lib")):
+            return "system package manager (e.g. pacman, apt, dnf)"
+        if norm.startswith(("/opt/homebrew", "/usr/local/cellar", "/home/linuxbrew/.linuxbrew")):
+            return "Homebrew (brew)"
+        if "/scoop/apps/" in norm or "/scoop/shims/" in norm:
+            return "Scoop"
 
     return None
 
