@@ -24,7 +24,7 @@ import heapq
 import unicodedata
 from datetime import datetime
 
-__version__ = "0.5.2"
+__version__ = "0.5.3"
 SYSTEM_OS = platform.system()
 
 PAGE_SIZE = 4096
@@ -1142,10 +1142,20 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
             if rows >= 24:
                 lines.append("")
             mode_label = "RESIDENT SET" if group_procs else "PID"
-            name_w = max(6, min(cols - 30, 20))
-            p_bar_w = max(4, min(cols - name_w - 24, 16))
+            hdr_title = f"PROCESS ({mode_label})" if cols >= 64 else "PROCESS"
+            hdr_w = visible_cell_width(hdr_title)
 
-            hdr_name = pad_plain_cells(f"PROCESS ({mode_label})", name_w, align="left")
+            if cols >= 80:
+                name_w = max(hdr_w, min(cols - 38, 24))
+                p_bar_w = max(4, min(cols - name_w - 24, 20))
+            elif cols >= 64:
+                name_w = max(hdr_w, 22)
+                p_bar_w = max(4, cols - name_w - 24)
+            else:
+                name_w = max(8, cols - 30)
+                p_bar_w = max(4, cols - name_w - 24)
+
+            hdr_name = pad_plain_cells(hdr_title, name_w, align="left")
             hdr_line = f"{m}{hdr_name}   {'RSS':>9}   {'USAGE':<{p_bar_w}}   {'SHARE':>6}{r}"
             lines.append(clamp_line_to_cols(hdr_line, cols))
 

@@ -5,6 +5,13 @@ All notable changes to `ram-tui` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.3] - 2026-08-31
+
+### Fixed
+- **Dynamic Header & Process Column Alignment**: Sized the process column dynamically using `max(hdr_w, ...)` based on the active mode label (`PROCESS (RESIDENT SET)` vs `PROCESS (PID)`), guaranteeing that `RSS`, `USAGE`, and `SHARE` headers align with zero horizontal offset across all terminal widths.
+
+---
+
 ## [0.5.2] - 2026-08-31
 
 ### Fixed
