@@ -211,6 +211,29 @@ class TerminalAndCliTests(unittest.TestCase):
             self.assertIn("RAM", rendered)
             self.assertIn("USED", rendered)
 
+    def test_wide_terminal_centering(self):
+        mem = {
+            "total": 32 * 1024**3,
+            "available": 24 * 1024**3,
+            "used": 8 * 1024**3,
+            "commit_as": None,
+            "commit_limit": None,
+            "cached": None,
+            "swap_used": 0,
+            "swap_total": 0,
+            "swap_desc": "none",
+            "valid": True
+        }
+        procs = [{"name": "proc_1", "rss": 1024**3, "count": 1, "pid": 1}]
+        with mock.patch("shutil.get_terminal_size", return_value=os.terminal_size((120, 24))):
+            rendered = ram.render_snapshot(mem, procs, mode="hero", enable_color=False)
+            lines = rendered.splitlines()
+            # On 120-column terminal with 80-column UI, left padding is (120-80)//2 = 20 spaces
+            for line in lines:
+                if line.strip():
+                    self.assertTrue(line.startswith(" " * 20))
+                    self.assertLessEqual(ram.visible_cell_width(line), 120)
+
     def test_viewport_height_budgeting(self):
         mem = {
             "total": 32 * 1024**3,

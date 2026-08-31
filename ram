@@ -1758,51 +1758,58 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
 
     # 2. MINI / SHORT VIEWPORTS (< 7 rows)
     if mode == "mini" or rows < 7:
-        bar_w = max(4, min(cols - 28, 44))
+        ui_cols = min(cols, 64)
+        pad_left = (cols - ui_cols) // 2
+        margin = " " * pad_left
+        bar_w = max(4, min(ui_cols - 28, 44))
         meter = render_meter_track(used / total if total > 0 else 0, width=bar_w, pal=pal, symbol=symbol)
         pct_color = g if used_pct < 60 else (w if used_pct < 85 else crit)
-        line1 = clamp_line_to_cols(f"{h}{bold}RAM{r}  {meter}  {pct_color}{bold}{used_pct:>5.1f}%{r}  {t}{format_bytes(used, 1)}{r}{m}/{r}{t}{format_bytes(total, 1)}{r}", cols)
+        line1 = clamp_line_to_cols(f"{margin}{h}{bold}RAM{r}  {meter}  {pct_color}{bold}{used_pct:>5.1f}%{r}  {t}{format_bytes(used, 1)}{r}{m}/{r}{t}{format_bytes(total, 1)}{r}", cols)
         if show_help and rows >= 2:
-            line2 = clamp_line_to_cols(f"{m}{dim}q:quit p:pause t:theme s:symbol m:mode 1/2:group +/-:rate h:help{r}", cols)
+            line2 = clamp_line_to_cols(f"{margin}{m}{dim}q:quit p:pause t:theme s:symbol m:mode 1/2:group +/-:rate h:help{r}", cols)
             return f"{line1}\n{line2}"
         return line1
 
-    # 3. HERO & COMPACT MODES (Strictly height and width bounded)
+    # 3. HERO & COMPACT MODES (Centered & dynamic width bounded)
+    ui_cols = min(cols, 80)
+    pad_left = (cols - ui_cols) // 2
+    margin = " " * pad_left
+
     lines = []
-    rule = f"{m}{dim}{'─' * cols}{r}"
+    rule = f"{m}{dim}{'─' * ui_cols}{r}"
 
     # Header line
     state_str = f"  {w}{bold}paused{r}" if paused else ""
     clock = f"{m}{now_str}{r}"
     clock_w = visible_cell_width(clock)
 
-    if cols >= 64:
+    if ui_cols >= 64:
         header_left = (
             f"{h}{bold}RAM{r}  {m}·{r}  {t}{truncate_plain_cells(hostname, 16)}{r}  {m}·{r}  "
             f"{m}{SYSTEM_OS} {platform.machine()}{r}  {m}·{r}  {a}{theme}{r}{state_str}"
         )
-    elif cols >= 44:
+    elif ui_cols >= 44:
         header_left = f"{h}{bold}RAM{r}  {m}·{r}  {t}{truncate_plain_cells(hostname, 12)}{r}  {m}·{r}  {a}{theme}{r}{state_str}"
     else:
         header_left = f"{h}{bold}RAM{r}  {m}·{r}  {a}{theme}{r}{state_str}"
 
     left_w = visible_cell_width(header_left)
-    if left_w + clock_w + 2 <= cols:
-        gap = cols - left_w - clock_w
+    if left_w + clock_w + 2 <= ui_cols:
+        gap = ui_cols - left_w - clock_w
         lines.append(f"{header_left}{' ' * gap}{clock}")
-    elif left_w <= cols:
+    elif left_w <= ui_cols:
         lines.append(header_left)
     else:
-        lines.append(clamp_line_to_cols(header_left, cols))
+        lines.append(clamp_line_to_cols(header_left, ui_cols))
 
     lines.append(rule)
 
     # Hero usage bar
-    bar_width = max(4, min(cols - 16, 64))
+    bar_width = max(4, min(ui_cols - 16, 64))
     meter = render_meter_track(used / total if total > 0 else 0, width=bar_width, pal=pal, symbol=symbol)
     pct_color = g if used_pct < 60 else (w if used_pct < 85 else crit)
-    lines.append(clamp_line_to_cols(meter, cols))
-    lines.append(clamp_line_to_cols(f"{pct_color}{bold}{used_pct:>5.1f}%{r}  {t}{bold}{format_bytes(used, 2)}{r}{m} used of {r}{t}{format_bytes(total, 2)}{r}", cols))
+    lines.append(clamp_line_to_cols(meter, ui_cols))
+    lines.append(clamp_line_to_cols(f"{pct_color}{bold}{used_pct:>5.1f}%{r}  {t}{bold}{format_bytes(used, 2)}{r}{m} used of {r}{t}{format_bytes(total, 2)}{r}", ui_cols))
 
     # Metrics Breakdown Budgeting
     footer_reserve = 2
@@ -1815,14 +1822,14 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
         if rows >= 22:
             lines.append("")
 
-        if cols >= 76:
-            lines.append(clamp_line_to_cols(f"{m}USED       AVAILABLE   TOTAL      COMMIT          CACHED    SWAP{r}", cols))
-            lines.append(clamp_line_to_cols(f"{g}{bold}{format_bytes(used, 2):<11}{r}{t}{bold}{format_bytes(available, 2):<12}{r}{t}{bold}{format_bytes(total, 2):<11}{r}{t}{commit_str:<16}{r}{t}{cached_str:<10}{r}{t}{swap_str}{r}", cols))
-        elif cols >= 44:
-            lines.append(clamp_line_to_cols(f"{m}USED          AVAILABLE     TOTAL{r}", cols))
-            lines.append(clamp_line_to_cols(f"{g}{bold}{format_bytes(used, 2):<14}{r}{t}{bold}{format_bytes(available, 2):<14}{r}{t}{bold}{format_bytes(total, 2):<14}{r}", cols))
+        if ui_cols >= 76:
+            lines.append(clamp_line_to_cols(f"{m}USED       AVAILABLE   TOTAL      COMMIT          CACHED    SWAP{r}", ui_cols))
+            lines.append(clamp_line_to_cols(f"{g}{bold}{format_bytes(used, 2):<11}{r}{t}{bold}{format_bytes(available, 2):<12}{r}{t}{bold}{format_bytes(total, 2):<11}{r}{t}{commit_str:<16}{r}{t}{cached_str:<10}{r}{t}{swap_str}{r}", ui_cols))
+        elif ui_cols >= 44:
+            lines.append(clamp_line_to_cols(f"{m}USED          AVAILABLE     TOTAL{r}", ui_cols))
+            lines.append(clamp_line_to_cols(f"{g}{bold}{format_bytes(used, 2):<14}{r}{t}{bold}{format_bytes(available, 2):<14}{r}{t}{bold}{format_bytes(total, 2):<14}{r}", ui_cols))
         else:
-            lines.append(clamp_line_to_cols(f"{m}USED:{r} {g}{bold}{format_bytes(used, 1)}{r}  {m}AVAIL:{r} {t}{bold}{format_bytes(available, 1)}{r}", cols))
+            lines.append(clamp_line_to_cols(f"{m}USED:{r} {g}{bold}{format_bytes(used, 1)}{r}  {m}AVAIL:{r} {t}{bold}{format_bytes(available, 1)}{r}", ui_cols))
 
     # Process Ranking (HERO mode only, strictly clamped to remaining space)
     if mode == "hero" and procs:
@@ -1834,22 +1841,22 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
             if rows >= 24:
                 lines.append("")
             mode_label = "RESIDENT SET" if group_procs else "PID"
-            hdr_title = f"PROCESS ({mode_label})" if cols >= 64 else "PROCESS"
+            hdr_title = f"PROCESS ({mode_label})" if ui_cols >= 64 else "PROCESS"
             hdr_w = visible_cell_width(hdr_title)
 
-            if cols >= 80:
-                name_w = max(hdr_w, min(cols - 38, 24))
-                p_bar_w = max(4, min(cols - name_w - 24, 20))
-            elif cols >= 64:
+            if ui_cols >= 80:
+                name_w = max(hdr_w, min(ui_cols - 38, 24))
+                p_bar_w = max(4, min(ui_cols - name_w - 24, 20))
+            elif ui_cols >= 64:
                 name_w = max(hdr_w, 22)
-                p_bar_w = max(4, cols - name_w - 24)
+                p_bar_w = max(4, ui_cols - name_w - 24)
             else:
-                name_w = max(8, cols - 30)
-                p_bar_w = max(4, cols - name_w - 24)
+                name_w = max(8, ui_cols - 30)
+                p_bar_w = max(4, ui_cols - name_w - 24)
 
             hdr_name = pad_plain_cells(hdr_title, name_w, align="left")
             hdr_line = f"{m}{hdr_name}   {'RSS':>9}   {'USAGE':<{p_bar_w}}   {'SHARE':>6}{r}"
-            lines.append(clamp_line_to_cols(hdr_line, cols))
+            lines.append(clamp_line_to_cols(hdr_line, ui_cols))
 
             for p in visible_procs:
                 count_str = f" ({p['count']})" if p.get("count", 1) > 1 else ""
@@ -1865,22 +1872,22 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
                 p_meter = render_meter_track(p_ratio, width=p_bar_w, pal=pal, symbol=symbol, color=p_color)
 
                 p_line = f"{t}{name_padded}{r}   {g}{rss_str}{r}   {p_meter}   {m}{p_pct_str:>6}{r}"
-                lines.append(clamp_line_to_cols(p_line, cols))
+                lines.append(clamp_line_to_cols(p_line, ui_cols))
 
     # Footer & Help Overlay (C-003)
     lines.append(rule)
     if show_help:
-        lines.append(clamp_line_to_cols(f"{h}{bold}HOTKEYS:{r} {t}q{r} quit  {t}p/space{r} pause  {t}t{r} theme  {t}s{r} symbol  {t}m{r} mode  {t}1/2{r} group  {t}+/-{r} rate  {t}h{r} close", cols))
+        lines.append(clamp_line_to_cols(f"{h}{bold}HOTKEYS:{r} {t}q{r} quit  {t}p/space{r} pause  {t}t{r} theme  {t}s{r} symbol  {t}m{r} mode  {t}1/2{r} group  {t}+/-{r} rate  {t}h{r} close", ui_cols))
     else:
         footer_text = f"{m}{dim}q quit   p pause   t theme   s symbol   m mode   1/2 group   +/- rate   h help{r}"
         if update_notice:
             footer_text += f"  {w}{update_notice}{r}"
-        lines.append(clamp_line_to_cols(footer_text, cols))
+        lines.append(clamp_line_to_cols(footer_text, ui_cols))
 
     # Guaranteed 2D Physical Safety Invariant:
-    # 1. Every line is clamped to <= cols printable cells (prevent horizontal wrap).
+    # 1. Every line is centered with margin and clamped to <= cols printable cells (prevent horizontal wrap).
     # 2. Total lines <= rows (prevent vertical scroll).
-    clamped_lines = [clamp_line_to_cols(line, cols) for line in lines]
+    clamped_lines = [clamp_line_to_cols(f"{margin}{line}", cols) for line in lines]
     if len(clamped_lines) > rows:
         clamped_lines = clamped_lines[:rows]
 
