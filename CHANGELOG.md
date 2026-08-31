@@ -178,4 +178,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 ## [0.4.0] - 2026-08-30
-- Initial multi-platform engine supporting Linux (`/proc`), macOS (`sysctl`/`vm_stat`), and Windows (`ctypes` Win32 API).
+
+### Added
+- **Unified Multi-Platform Engine**: Integrated Linux (`/proc`), macOS (`sysctl`/`vm_stat`), and Windows (`ctypes` Win32 API) collectors into a unified codebase.
+- **ANSI Sanitization Engine**: Added regex-based terminal escape stripping for clean process name display.
+- **Non-Interactive Pipeline Support**: Auto-degradation to one-shot mode when redirected to files or pipes.
+
+---
+
+## [0.3.0] - 2026-08-30
+
+### Added
+- **Cross-Platform Foundation**: Added native macOS collection via `sysctl` (`hw.memsize`, `vm.swapusage`) and `vm_stat` page accounting, alongside Windows support via `ctypes` (`GlobalMemoryStatusEx`, `GetPerformanceInfo`, and `CreateToolhelp32Snapshot`).
+- **Machine-Readable JSON Output**: Added `--json` export mode outputting structured system metrics and process tree for scripting and automation.
+- **Zero-Dependency Single-File Packaging**: Consolidated all collectors into a standalone, portable Python executable.
+
+---
+
+## [0.2.0] - 2026-08-30
+
+### Added
+- **Comprehensive Memory Breakdown Table**: Displays `Used`, `Available`, `Total`, `Commit Limit` (% committed), `Cached` (reclaimable memory), and `Swap`.
+- **ZRAM Compression Discovery**: Added runtime detection for compressed ZRAM swap devices via `/proc/swaps`.
+- **Real-Time Interactive Controls**: Added hotkeys for pause/resume (`Space`/`p`), refresh rate tuning (`+`/`-`), and process aggregation toggling (`1` grouped by name, `2` individual PIDs).
+- **Responsive Terminal Adaptation**: Dynamic horizontal layout scaling based on terminal columns.
+
+---
+
+## [0.1.0] - 2026-08-30
+
+### Added
+- **Initial Prototype**: Core terminal memory monitor for Linux using direct kernel `/proc/meminfo` and `/proc/[pid]/statm` parsing with zero subshell overhead.
+- **Visual Memory Gauge**: ANSI usage progress tracks with real-time percentage and IEC byte formatting.
+- **Process Memory Ranking**: Grouped resident set size (RSS) process footprints with bounded extraction.
+- **Interactive TUI Loop**: Non-blocking keypress handling with live real-time updates.
+
