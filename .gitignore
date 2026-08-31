@@ -6,4 +6,7 @@ env/
 .DS_Store
 *.swp
 *.tmp
+*.pem
+*.key
+*.id_rsa
 sync.sh

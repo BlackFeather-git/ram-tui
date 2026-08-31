@@ -5,6 +5,16 @@ All notable changes to `ram-tui` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0-rc.2] - 2026-08-31
+
+### Security & Hardening
+- **Purged Unused Key Fixtures**: Removed legacy unencrypted PEM files (`test_key.pem`, `test_pub.pem`) from repository tracking, replacing all test fixtures with pure in-memory numeric constants in `test_key_data.py`.
+- **Git Security Exclusions**: Added `*.pem`, `*.key`, and `*.id_rsa` patterns to `.gitignore` to prevent any accidental key staging or commit.
+- **Enhanced Security Policy & Documentation (`SECURITY.md`)**: Documented maintainer private key custody, emergency rotation/revocation procedures, manual release verification guide using `sha256sum` and OpenSSL, and package-manager vs self-updater guidance.
+- **Configurable Update Interval (`RAM_UPDATE_INTERVAL`)**: Added support for `"d"` (days) suffix in interval parser alongside `"s"`, `"m"`, and `"h"`.
+
+---
+
 ## [0.6.0-rc.1] - 2026-08-31
 
 ### Added
