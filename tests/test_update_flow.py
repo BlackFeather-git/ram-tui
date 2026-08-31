@@ -117,6 +117,7 @@ class LocalUpdateFlowTest(unittest.TestCase):
         with open(self.target_bin, "w", encoding="utf-8") as f:
             f.write(
                 "#!/usr/bin/env python3\n"
+                "# ram-tui\n"
                 '__version__ = "0.6.0-beta.1"\n\n'
                 'if __name__ == "__main__":\n'
                 "    pass\n"

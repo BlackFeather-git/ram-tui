@@ -390,7 +390,7 @@ class UpdateManagerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             fake_bin = os.path.join(tmp, "ram")
             with open(fake_bin, "w") as f:
-                f.write("#!/usr/bin/env python3\n__version__ = '0.5.3'\nif __name__ == '__main__': pass\n")
+                f.write("#!/usr/bin/env python3\n# ram-tui\n__version__ = '0.5.3'\nif __name__ == '__main__': pass\n")
 
             with mock.patch.object(ram, "detect_package_manager_install", return_value="pacman"):
                 with mock.patch.object(manager, "check_now", return_value=("0.6.0", True)):
@@ -476,7 +476,7 @@ class UpdateManagerTests(unittest.TestCase):
 
             with self.assertRaises(ValueError) as ctx:
                 ram.UpdateManager._resolve_target(unrelated_binary)
-            self.assertIn("target does not appear to be a ram-tui installation", str(ctx.exception))
+            self.assertIn("target does not appear to be a valid ram-tui installation", str(ctx.exception))
 
     def test_toctou_symlink_swap_rejection(self):
         manager = ram.UpdateManager("0.5.3")
@@ -484,7 +484,7 @@ class UpdateManagerTests(unittest.TestCase):
             target = os.path.join(tmp, "ram")
             real_file = os.path.join(tmp, "real_ram")
             with open(real_file, "w") as f:
-                f.write("#!/usr/bin/env python3\n__version__ = '0.5.3'\nif __name__ == '__main__': pass\n")
+                f.write("#!/usr/bin/env python3\n# ram-tui\n__version__ = '0.5.3'\nif __name__ == '__main__': pass\n")
 
             os.symlink(real_file, target)
 
@@ -512,6 +512,70 @@ class UpdateManagerTests(unittest.TestCase):
             acquired = manager._acquire_process_lock()
             self.assertIsNotNone(acquired)
             manager._release_process_lock(acquired)
+
+    def test_sha_with_surrounding_garbage_rejected(self):
+        manager = ram.UpdateManager("0.5.3")
+        # SHA surrounded by garbage text should fail strict format regex
+        garbage_payload = b"header garbage\n" + (b"a" * 64) + b"\nfooter garbage\n"
+        with mock.patch.object(manager, "_request", return_value=garbage_payload):
+            with self.assertRaises(ValueError) as ctx:
+                manager._fetch_expected_sha256("0.6.0")
+            self.assertIn("malformed SHA-256 checksum asset format", str(ctx.exception))
+
+    def test_target_authentication_requires_ram_tui_and_ast_version(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            # File with only __version__ but no ram-tui banner
+            fake_py = os.path.join(tmp, "fake.py")
+            with open(fake_py, "w") as f:
+                f.write("__version__ = '0.5.3'\n")
+            with self.assertRaises(ValueError) as ctx:
+                ram.UpdateManager._resolve_target(fake_py)
+            self.assertIn("missing authentic 'ram-tui' identity banner", str(ctx.exception))
+
+            # File with ram-tui in comments but no valid AST __version__
+            fake_banner_only = os.path.join(tmp, "fake_banner.py")
+            with open(fake_banner_only, "w") as f:
+                f.write("# ram-tui\nprint('hello')\n")
+            with self.assertRaises(ValueError) as ctx:
+                ram.UpdateManager._resolve_target(fake_banner_only)
+            self.assertIn("missing valid module-level __version__", str(ctx.exception))
+
+    def test_semver_rejects_leading_zeros(self):
+        # Strict SemVer 2.0.0 rejects numeric prerelease identifiers with leading zeros
+        self.assertIsNone(ram.parse_semver("0.6.0-beta.01"))
+        self.assertIsNone(ram.parse_semver("0.6.0-beta.001"))
+        self.assertIsNotNone(ram.parse_semver("0.6.0-beta.1"))
+        self.assertIsNotNone(ram.parse_semver("0.6.0-beta.0"))
+
+    def test_privileged_directory_security_fails_closed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target_bin = os.path.join(tmp, "ram")
+            with open(target_bin, "w") as f:
+                f.write("#!/usr/bin/env python3\n# ram-tui\n__version__ = '0.5.3'\nif __name__ == '__main__': pass\n")
+
+            # Simulate root execution (euid = 0) with a world-writable directory (mode 0777)
+            os.chmod(tmp, 0o777)
+            with mock.patch("os.geteuid", return_value=0, create=True):
+                with self.assertRaises(PermissionError) as ctx:
+                    ram.UpdateManager._resolve_target(target_bin)
+                self.assertIn("refusing to update binary in insecure world-writable directory", str(ctx.exception))
+
+    def test_pid_reuse_lock_eviction(self):
+        import time
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_path = os.path.join(tmp, "cache.json")
+            lock_path = cache_path + ".lock"
+
+            # Record a lock with current PID but mismatched/past starttime (simulating PID reuse)
+            with open(lock_path, "w") as f:
+                f.write(f"{os.getpid()} 1000.0 {time.time()}\n")
+
+            manager = ram.UpdateManager("0.5.3", cache_path=cache_path)
+            with mock.patch("ram.get_linux_proc_starttime", return_value="99999"):
+                # Starttime mismatch detects PID reuse -> safely evicts stale lock
+                acquired = manager._acquire_process_lock()
+                self.assertIsNotNone(acquired)
+                manager._release_process_lock(acquired)
 
     def test_cli_update_flags(self):
         args = ram.parse_arguments(["--update", "--force"])

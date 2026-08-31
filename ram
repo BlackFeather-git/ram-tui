@@ -1039,7 +1039,7 @@ UPDATE_VERSION_RE = re.compile(
 
 
 def parse_semver(value):
-    """Parse a strict MAJOR.MINOR.PATCH semantic version."""
+    """Parse a strict MAJOR.MINOR.PATCH semantic version adhering strictly to SemVer 2.0.0."""
     if not isinstance(value, str):
         return None
     match = UPDATE_VERSION_RE.match(value.strip())
@@ -1051,7 +1051,11 @@ def parse_semver(value):
     if prerelease is not None:
         parsed_parts = []
         for part in prerelease.split("."):
+            if not part:
+                return None
             if part.isdigit():
+                if len(part) > 1 and part.startswith("0"):
+                    return None  # SemVer 2.0.0 forbids leading zeros in numeric prerelease identifiers
                 parsed_parts.append((0, int(part)))
             else:
                 parsed_parts.append((1, part))
@@ -1356,11 +1360,11 @@ class UpdateManager:
         try:
             raw = self._request(url, user_agent, max_size=4096)
             text = raw.decode("utf-8").strip()
-            # Strict 64-character hexadecimal digest validation
-            match = re.search(r"\b([0-9a-fA-F]{64})\b", text)
+            # Strict document match: exactly 64-hex digest optionally followed by whitespace & filename
+            match = re.fullmatch(r"^\s*([0-9a-fA-F]{64})(?:\s+[*]?\S+)?\s*$", text)
             if match:
                 return match.group(1).lower()
-            raise ValueError(f"malformed SHA-256 checksum asset for release v{latest_version}")
+            raise ValueError(f"malformed SHA-256 checksum asset format for release v{latest_version}")
         except Exception as exc:
             raise ValueError(f"failed to retrieve cryptographic SHA-256 release digest: {exc}") from exc
 
@@ -1426,24 +1430,27 @@ class UpdateManager:
         if not os.path.isfile(real_target):
             raise FileNotFoundError(f"installed executable not found: {real_target}")
 
-        # Non-ram binary overwrite protection: verify target is actually ram-tui
+        # AST Target Authentication: strictly authenticate existing target as ram-tui
         try:
             with open(real_target, "r", encoding="utf-8", errors="ignore") as f:
-                header = f.read(2048)
-            if "ram-tui" not in header and "__version__" not in header:
-                raise ValueError(f"target does not appear to be a ram-tui installation: {real_target}")
-        except (OSError, ValueError) as exc:
-            raise ValueError(f"target verification failed: {exc}") from exc
+                target_src = f.read(65536)
+            if "ram-tui" not in target_src:
+                raise ValueError("missing authentic 'ram-tui' identity banner")
+            target_tree = ast.parse(target_src, filename=real_target)
+            if not _extract_ast_version(target_tree):
+                raise ValueError("missing valid module-level __version__ declaration")
+        except Exception as exc:
+            raise ValueError(f"target does not appear to be a valid ram-tui installation: {exc}") from exc
 
-        # Unix privilege safety: prevent root updates in insecure world-writable directories (e.g. /tmp)
+        # Privileged directory security: fail closed without swallowing PermissionError
         if SYSTEM_OS != "Windows" and hasattr(os, "geteuid") and os.geteuid() == 0:
             parent_dir = os.path.dirname(real_target) or "."
             try:
                 st = os.stat(parent_dir)
-                if (st.st_mode & 0o002) and not (st.st_mode & 0o1000):
-                    raise PermissionError(f"refusing to update binary in insecure world-writable directory: {parent_dir}")
-            except OSError:
-                pass
+            except OSError as exc:
+                raise PermissionError(f"cannot inspect target parent directory security: {exc}") from exc
+            if (st.st_mode & 0o002) and not (st.st_mode & 0o1000):
+                raise PermissionError(f"refusing to update binary in insecure world-writable directory: {parent_dir}")
 
         return real_target, is_symlink, abs_target
 
@@ -1499,15 +1506,25 @@ class UpdateManager:
                         content = f.read().strip().split()
                     if content and content[0].isdigit():
                         owner_pid = int(content[0])
-                        # Only evict lock if owner process is demonstrably dead
-                        if not _is_pid_alive(owner_pid):
+                        owner_start = content[1] if len(content) > 1 else None
+
+                        # PID Reuse Protection: verify process starttime on Linux
+                        if SYSTEM_OS == "Linux" and owner_start is not None and owner_start != "0":
+                            current_start = get_linux_proc_starttime(owner_pid)
+                            if current_start is None or str(current_start) != str(owner_start):
+                                os.unlink(lock_path)
+                            else:
+                                return None  # Genuine owner still actively running
+                        elif not _is_pid_alive(owner_pid):
                             os.unlink(lock_path)
                         else:
-                            return None  # Owner is still active
+                            return None  # Genuine owner still active
                 except (OSError, ValueError):
                     pass
+
+            start_val = get_linux_proc_starttime(os.getpid()) if SYSTEM_OS == "Linux" else "0"
             fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-            os.write(fd, f"{os.getpid()} {time.time()}\n".encode("utf-8"))
+            os.write(fd, f"{os.getpid()} {start_val or '0'} {time.time()}\n".encode("utf-8"))
             os.close(fd)
             return lock_path
         except (OSError, Exception):
