@@ -57,10 +57,10 @@ chmod +x ~/.local/bin/ram
 While running interactively, press:
 
 | Key | Action |
-|:---|:---|
 | `q` / `Ctrl+C` | Quit |
 | `Space` / `p` | Pause / Resume real-time updates |
-| `t` / `T` | Cycle color theme live (**Catppuccin**, **Nord**, **Tokyo Night**, etc.) |
+| `t` / `T` | Cycle color theme live (**Dracula**, **Catppuccin**, **Nord**, **Tokyo Night**, etc.) |
+| `s` / `S` | Toggle meter graph symbol live (**Block** `█` $\leftrightarrow$ **Braille** `⣿`) |
 | `m` / `M` | Cycle display mode live (**Hero** $\rightarrow$ **Compact** $\rightarrow$ **Mini**) |
 | `1` | Group processes by name (default) |
 | `2` | Show individual process PIDs |
@@ -73,7 +73,10 @@ While running interactively, press:
 ## 💻 CLI Usage & Options
 
 ```bash
-# Launch interactive monitor (100ms refresh, Catppuccin theme)
+# Launch interactive monitor with Dracula theme & Braille symbols
+ram --theme dracula --symbol braille
+
+# Launch with Catppuccin theme
 ram --theme catppuccin
 
 # Compact mode (meters only) with Nord theme
@@ -104,12 +107,17 @@ Choose your aesthetic with `--theme <name>`:
 | Theme | Preview Description |
 |---|---|
 | `default` | Dynamic gradient (Green <60%, Yellow <85%, Red $\ge$ 85%) |
+| `dracula` | Official Dracula Vampire (Purple, Pink, Cyan, Red) |
 | `catppuccin` | Catppuccin Mocha (Mauve, Sapphire, Teal, Peach) |
-| `nord` | Arctic Frost blue and snow storm palette |
-| `tokyo-night` | Tokyo Night neon storm and magenta |
-| `dracula` | Dracula purple, pink, and cyan |
-| `gruvbox` | Gruvbox retro dark aqua and warm yellow |
-| `cyberpunk` | High-contrast neon pink, electric yellow, and bright cyan |
+| `nord` | Arctic Frost Cyan (Nord8) and Snow Storm palette |
+| `tokyo-night` | Tokyo Night neon storm cyan and magenta |
+| `gruvbox` | Gruvbox retro dark aqua and warm orange |
+| `cyberpunk` | High-contrast neon hot pink, electric yellow, and cyan |
+| `rose-pine` | Rosé Pine (Iris, Love, Foam, Gold) |
+| `everforest` | Cozy Everforest (Forest Green, Sage, Warm Yellow) |
+| `kanagawa` | Kanagawa Wave Blue, Sakura Pink, and Fuji White |
+| `monokai` | Monokai Pro (Magenta, Bright Green, Cyan, Yellow) |
+| `solarized` | Solarized Dark (Cyan, Blue, Warm Yellow) |
 | `monochrome` | Pure grayscale / ANSI-free (auto-used on `NO_COLOR`) |
 
 ---

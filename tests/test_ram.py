@@ -112,7 +112,11 @@ class ThemeAndModeTests(unittest.TestCase):
         self.procs = [{"name": "python", "rss": 2 * 1024**3, "count": 2, "pid": None}]
 
     def test_theme_palettes_completeness(self):
-        required_themes = {"default", "catppuccin", "nord", "tokyo-night", "dracula", "gruvbox", "cyberpunk", "monochrome"}
+        required_themes = {
+            "default", "dracula", "catppuccin", "nord", "tokyo-night",
+            "gruvbox", "cyberpunk", "rose-pine", "everforest", "kanagawa",
+            "monokai", "solarized", "monochrome"
+        }
         self.assertTrue(required_themes.issubset(set(ram.THEME_PALETTES.keys())))
 
     def test_display_modes_render(self):
@@ -131,14 +135,19 @@ class ThemeAndModeTests(unittest.TestCase):
         self.assertTrue(tiny.startswith("RAM:"))
         self.assertNotIn("\n", tiny)
 
+    def test_braille_symbol_render(self):
+        braille_out = ram.render_snapshot(self.mem, self.procs, mode="hero", symbol="braille")
+        self.assertIn("⣿", braille_out)
+
     def test_cli_mode_flags_and_mutual_exclusion(self):
-        args = ram.parse_arguments(["--compact", "--theme", "catppuccin"])
+        args = ram.parse_arguments(["--compact", "--theme", "catppuccin", "--symbol", "braille"])
         self.assertTrue(args.compact)
         self.assertEqual(args.theme, "catppuccin")
+        self.assertEqual(args.symbol, "braille")
 
-        args = ram.parse_arguments(["--mini", "--theme", "nord"])
+        args = ram.parse_arguments(["--mini", "--theme", "dracula"])
         self.assertTrue(args.mini)
-        self.assertEqual(args.theme, "nord")
+        self.assertEqual(args.theme, "dracula")
 
         args = ram.parse_arguments(["--tiny"])
         self.assertTrue(args.tiny)

@@ -89,21 +89,27 @@ if SYSTEM_OS == "Windows":
 
 
 # ---------------------------------------------------------------------------
-# Minimalist Modern Color Palettes (24-bit TrueColor)
+# Rich Ricing Themes (24-bit TrueColor)
 # ---------------------------------------------------------------------------
 THEME_NAMES = [
     "default",
+    "dracula",
     "catppuccin",
     "nord",
     "tokyo-night",
-    "dracula",
     "gruvbox",
     "cyberpunk",
+    "rose-pine",
+    "everforest",
+    "kanagawa",
+    "monokai",
+    "solarized",
     "monochrome",
 ]
 
 DISPLAY_MODES = ("hero", "compact", "mini", "tiny")
 CYCLING_MODES = ("hero", "compact", "mini")
+GRAPH_SYMBOLS = ("block", "braille")
 
 THEME_PALETTES = {
     "default": {
@@ -117,70 +123,125 @@ THEME_PALETTES = {
         "text": "\033[38;2;235;240;245m",       # White
         "dim": "\033[2m",
     },
+    "dracula": {
+        "header": "\033[38;2;189;147;249m",     # Dracula Purple (#bd93f9)
+        "accent": "\033[38;2;255;121;198m",     # Dracula Pink (#ff79c6)
+        "good": "\033[38;2;189;147;249m",       # Dracula Signature Purple Gauge
+        "warning": "\033[38;2;255;184;108m",    # Dracula Orange (#ffb86c)
+        "critical": "\033[38;2;255;85;85m",     # Dracula Red (#ff5555)
+        "muted": "\033[38;2;98;114;164m",       # Dracula Comment (#6272a4)
+        "track": "\033[38;2;68;71;90m",         # Dracula Current Line (#44475a)
+        "text": "\033[38;2;248;248;242m",       # Dracula FG (#f8f8f2)
+        "dim": "\033[2m",
+    },
     "catppuccin": {
-        "header": "\033[38;2;203;166;247m",     # Mauve
-        "accent": "\033[38;2;116;199;236m",     # Sapphire
-        "good": "\033[38;2;166;227;161m",       # Green
-        "warning": "\033[38;2;249;226;175m",    # Peach/Yellow
-        "critical": "\033[38;2;243;139;168m",   # Red/Maroon
-        "muted": "\033[38;2;147;153;178m",      # Overlay0
-        "track": "\033[38;2;69;71;90m",         # Surface1
-        "text": "\033[38;2;205;214;244m",       # Text
+        "header": "\033[38;2;203;166;247m",     # Mauve (#cba6f7)
+        "accent": "\033[38;2;116;199;236m",     # Sapphire (#74c7ec)
+        "good": "\033[38;2;203;166;247m",       # Signature Mauve Gauge
+        "warning": "\033[38;2;249;226;175m",    # Peach/Yellow (#f9e2af)
+        "critical": "\033[38;2;243;139;168m",   # Maroon/Red (#f38ba8)
+        "muted": "\033[38;2;147;153;178m",      # Overlay0 (#9399b2)
+        "track": "\033[38;2;69;71;90m",         # Surface1 (#45475a)
+        "text": "\033[38;2;205;214;244m",       # Text (#cdd6f4)
         "dim": "\033[2m",
     },
     "nord": {
-        "header": "\033[38;2;136;192;208m",     # Nord8 Frost Cyan
-        "accent": "\033[38;2;129;161;193m",     # Nord9 Frost Blue
-        "good": "\033[38;2;163;190;140m",       # Nord14 Green
-        "warning": "\033[38;2;235;203;139m",    # Nord13 Yellow
-        "critical": "\033[38;2;191;97;106m",    # Nord11 Red
-        "muted": "\033[38;2;216;222;233m",      # Nord4 Snow Storm
-        "track": "\033[38;2;76;86;106m",        # Nord3 Polar Night
-        "text": "\033[38;2;236;239;244m",       # Nord6 White
+        "header": "\033[38;2;136;192;208m",     # Frost Cyan (Nord8)
+        "accent": "\033[38;2;129;161;193m",     # Frost Blue (Nord9)
+        "good": "\033[38;2;136;192;208m",       # Signature Frost Cyan Gauge
+        "warning": "\033[38;2;235;203;139m",    # Yellow (Nord13)
+        "critical": "\033[38;2;191;97;106m",    # Red (Nord11)
+        "muted": "\033[38;2;216;222;233m",      # Snow Storm (Nord4)
+        "track": "\033[38;2;76;86;106m",        # Polar Night (Nord3)
+        "text": "\033[38;2;236;239;244m",       # White (Nord6)
         "dim": "\033[2m",
     },
     "tokyo-night": {
-        "header": "\033[38;2;125;207;255m",     # Storm Cyan
-        "accent": "\033[38;2;187;154;247m",     # Purple
-        "good": "\033[38;2;158;206;106m",       # Green
-        "warning": "\033[38;2;224;175;104m",    # Yellow
-        "critical": "\033[38;2;247;118;142m",   # Red
-        "muted": "\033[38;2;115;126;162m",      # Dark Blue-Gray
+        "header": "\033[38;2;125;207;255m",     # Storm Cyan (#7dcfff)
+        "accent": "\033[38;2;187;154;247m",     # Purple (#bb9af7)
+        "good": "\033[38;2;125;207;255m",       # Storm Cyan Gauge
+        "warning": "\033[38;2;224;175;104m",    # Yellow (#e0af68)
+        "critical": "\033[38;2;247;118;142m",   # Red (#f7768e)
+        "muted": "\033[38;2;115;126;162m",      # Blue-Gray (#737ea2)
         "track": "\033[38;2;65;72;104m",        # Dark Track
-        "text": "\033[38;2;192;202;245m",       # Foreground
-        "dim": "\033[2m",
-    },
-    "dracula": {
-        "header": "\033[38;2;189;147;249m",     # Purple
-        "accent": "\033[38;2;139;233;253m",     # Cyan
-        "good": "\033[38;2;80;250;123m",        # Green
-        "warning": "\033[38;2;241;250;140m",    # Yellow
-        "critical": "\033[38;2;255;85;85m",     # Red
-        "muted": "\033[38;2;98;114;164m",       # Comment Gray
-        "track": "\033[38;2;68;71;90m",         # Current Line
-        "text": "\033[38;2;248;248;242m",       # Foreground
+        "text": "\033[38;2;192;202;245m",       # Foreground (#c0caf5)
         "dim": "\033[2m",
     },
     "gruvbox": {
-        "header": "\033[38;2;104;157;106m",     # Aqua
-        "accent": "\033[38;2;69;133;136m",      # Blue
-        "good": "\033[38;2;184;187;38m",        # Bright Green
-        "warning": "\033[38;2;250;189;47m",     # Bright Yellow
-        "critical": "\033[38;2;251;73;52m",     # Bright Red
-        "muted": "\033[38;2;146;131;116m",      # Gray
-        "track": "\033[38;2;60;56;54m",         # Dark Track
-        "text": "\033[38;2;235;219;178m",       # Light Foreground
+        "header": "\033[38;2;254;128;25m",      # Bright Orange (#fe8019)
+        "accent": "\033[38;2;142;192;124m",     # Aqua (#8ec07c)
+        "good": "\033[38;2;142;192;124m",       # Aqua Gauge
+        "warning": "\033[38;2;250;189;47m",     # Yellow (#fabd2f)
+        "critical": "\033[38;2;251;73;52m",     # Red (#fb4934)
+        "muted": "\033[38;2;146;131;116m",      # Gray (#928374)
+        "track": "\033[38;2;60;56;54m",         # Dark Track (#3c3836)
+        "text": "\033[38;2;235;219;178m",       # Light FG (#ebdbb2)
         "dim": "\033[2m",
     },
     "cyberpunk": {
-        "header": "\033[38;2;0;229;255m",       # Neon Cyan
-        "accent": "\033[38;2;255;42;157m",      # Neon Pink
-        "good": "\033[38;2;0;255;159m",         # Neon Green
-        "warning": "\033[38;2;244;255;0m",      # Neon Yellow
-        "critical": "\033[38;2;255;0;60m",      # Neon Crimson
-        "muted": "\033[38;2;113;113;138m",      # Muted Purple-Gray
-        "track": "\033[38;2;45;35;60m",         # Track Dark
+        "header": "\033[38;2;0;229;255m",       # Neon Cyan (#00e5ff)
+        "accent": "\033[38;2;255;42;157m",      # Neon Pink (#ff2a9d)
+        "good": "\033[38;2;255;42;157m",        # Hot Pink Gauge
+        "warning": "\033[38;2;244;255;0m",      # Neon Yellow (#f4ff00)
+        "critical": "\033[38;2;255;0;60m",      # Crimson (#ff003c)
+        "muted": "\033[38;2;113;113;138m",      # Purple-Gray
+        "track": "\033[38;2;45;35;60m",         # Dark Track
         "text": "\033[38;2;245;245;255m",       # White Glow
+        "dim": "\033[2m",
+    },
+    "rose-pine": {
+        "header": "\033[38;2;196;167;231m",     # Iris (#c4a7e7)
+        "accent": "\033[38;2;235;111;146m",     # Love (#eb6f92)
+        "good": "\033[38;2;196;167;231m",       # Iris Gauge
+        "warning": "\033[38;2;246;193;119m",    # Gold (#f6c177)
+        "critical": "\033[38;2;235;111;146m",   # Love Red (#eb6f92)
+        "muted": "\033[38;2;110;106;134m",      # Muted (#6e6a86)
+        "track": "\033[38;2;57;53;82m",         # Surface (#393552)
+        "text": "\033[38;2;224;222;244m",       # Text (#e0def4)
+        "dim": "\033[2m",
+    },
+    "everforest": {
+        "header": "\033[38;2;167;192;128m",     # Forest Green (#a7c080)
+        "accent": "\033[38;2;131;192;146m",     # Sage (#83c092)
+        "good": "\033[38;2;167;192;128m",       # Forest Green Gauge
+        "warning": "\033[38;2;219;188;127m",    # Yellow (#dbbc7f)
+        "critical": "\033[38;2;230;126;128m",   # Red (#e67e80)
+        "muted": "\033[38;2;133;146;137m",      # Muted (#859289)
+        "track": "\033[38;2;55;65;69m",         # Dark Track
+        "text": "\033[38;2;211;198;170m",       # Light Text (#d3c6aa)
+        "dim": "\033[2m",
+    },
+    "kanagawa": {
+        "header": "\033[38;2;126;156;216m",     # Wave Blue (#7e9cd8)
+        "accent": "\033[38;2;210;126;153m",     # Sakura Pink (#d27e99)
+        "good": "\033[38;2;126;156;216m",       # Wave Blue Gauge
+        "warning": "\033[38;2;255;160;102m",    # Surimi Orange (#ffa066)
+        "critical": "\033[38;2;195;64;67m",     # Autumn Red (#c34043)
+        "muted": "\033[38;2;114;113;105m",      # Muted Fuji
+        "track": "\033[38;2;54;54;70m",         # Sumi Ink
+        "text": "\033[38;2;220;215;186m",       # Fuji White (#dcd7ba)
+        "dim": "\033[2m",
+    },
+    "monokai": {
+        "header": "\033[38;2;249;38;114m",      # Magenta (#f92672)
+        "accent": "\033[38;2;102;217;239m",     # Cyan (#66d9ef)
+        "good": "\033[38;2;166;226;46m",        # Bright Green (#a6e22e)
+        "warning": "\033[38;2;230;219;116m",    # Yellow (#e6db74)
+        "critical": "\033[38;2;249;38;114m",    # Magenta/Red (#f92672)
+        "muted": "\033[38;2;117;113;94m",       # Comment Gray
+        "track": "\033[38;2;62;61;50m",         # Dark Track
+        "text": "\033[38;2;248;248;242m",       # FG
+        "dim": "\033[2m",
+    },
+    "solarized": {
+        "header": "\033[38;2;42;161;152m",      # Cyan (#2aa198)
+        "accent": "\033[38;2;38;139;210m",      # Blue (#268bd2)
+        "good": "\033[38;2;42;161;152m",        # Cyan Gauge
+        "warning": "\033[38;2;181;137;0m",      # Yellow (#b58900)
+        "critical": "\033[38;2;220;50;47m",     # Red (#dc322f)
+        "muted": "\033[38;2;101;123;131m",      # Base00 (#657b83)
+        "track": "\033[38;2;7;54;66m",          # Base02 (#073642)
+        "text": "\033[38;2;147;161;161m",       # Base1 (#93a1a1)
         "dim": "\033[2m",
     },
     "monochrome": {
@@ -189,9 +250,13 @@ THEME_PALETTES = {
     },
 }
 
-FRACTIONAL_BLOCKS = ["", "▏", "▎", "▍", "▌", "▋", "▊", "▉"]
+BLOCK_FRACTIONS = ["", "▏", "▎", "▍", "▌", "▋", "▊", "▉"]
 BLOCK_FULL = "█"
 BLOCK_TRACK = "░"
+
+BRAILLE_FRACTIONS = ["", "⡀", "⣀", "⣄", "⣤", "⣦", "⣶", "⣷"]
+BRAILLE_FULL = "⣿"
+BRAILLE_TRACK = "⣀"
 
 
 def should_use_color(is_interactive=True):
@@ -802,8 +867,8 @@ def get_processes(group_by_name=True, limit=8):
 # Minimalist, Breathable Modern UI Rendering Engine
 # ---------------------------------------------------------------------------
 
-def render_smooth_bar(ratio, width=32, pal=None):
-    """Renders high-resolution smooth fractional progress bar with sub-character accuracy."""
+def render_meter_track(ratio, width=32, pal=None, symbol="block"):
+    """Renders progress bar with sub-character accuracy in Block or Braille style."""
     pal = pal or get_palette("monochrome", False)
     ratio = clamp(ratio, 0.0, 1.0)
     total_eighths = int(round(ratio * width * 8))
@@ -818,8 +883,17 @@ def render_smooth_bar(ratio, width=32, pal=None):
     else:
         c = pal["CRITICAL"]
 
-    filled_part = f"{c}{BLOCK_FULL * full_blocks}{FRACTIONAL_BLOCKS[rem_eighths]}{pal['RESET']}"
-    empty_part = f"{pal['TRACK']}{BLOCK_TRACK * empty_blocks}{pal['RESET']}"
+    if symbol == "braille":
+        full_char = BRAILLE_FULL
+        fractions = BRAILLE_FRACTIONS
+        track_char = BRAILLE_TRACK
+    else:
+        full_char = BLOCK_FULL
+        fractions = BLOCK_FRACTIONS
+        track_char = BLOCK_TRACK
+
+    filled_part = f"{c}{full_char * full_blocks}{fractions[rem_eighths]}{pal['RESET']}"
+    empty_part = f"{pal['TRACK']}{track_char * empty_blocks}{pal['RESET']}"
     return f"{filled_part}{empty_part}"
 
 
@@ -828,8 +902,8 @@ def visible_len(s):
     return len(ANSI_ESCAPE_RE.sub("", s))
 
 
-def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", theme="default", enable_color=True, show_help=False):
-    """Renders a clean, breathable, modern dashboard across all display modes."""
+def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", theme="default", symbol="block", enable_color=True, show_help=False):
+    """Renders clean, breathable, modern dashboard across all display modes."""
     pal = get_palette(theme, enable_color)
     hostname = sanitize_text(socket.gethostname())
     now_str = datetime.now().strftime("%H:%M:%S")
@@ -858,17 +932,17 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
         total_str = format_bytes(total, precision=1)
         res = f"RAM: {used_str} / {total_str} ({used_pct:.1f}%)"
         if show_help:
-            res += f"\n{m}q quit   p pause   t theme   m mode{r}"
+            res += f"\n{m}q quit   p pause   t theme   s symbol   m mode{r}"
         return res
 
     # 2. MINI MODE (Clean single-line meter)
     if mode == "mini":
         bar_w = clamp(cols - 32, 10, 44)
-        smooth_bar = render_smooth_bar(used / total if total > 0 else 0, width=bar_w, pal=pal)
+        meter = render_meter_track(used / total if total > 0 else 0, width=bar_w, pal=pal, symbol=symbol)
         pct_color = g if used_pct < 60 else (w if used_pct < 85 else crit)
-        res = f"{h}{bold}RAM{r}  {smooth_bar}  {pct_color}{bold}{used_pct:>5.1f}%{r}  {t}{format_bytes(used, 1)}{r}{m} / {r}{t}{format_bytes(total, 1)}{r}"
+        res = f"{h}{bold}RAM{r}  {meter}  {pct_color}{bold}{used_pct:>5.1f}%{r}  {t}{format_bytes(used, 1)}{r}{m} / {r}{t}{format_bytes(total, 1)}{r}"
         if show_help:
-            res += f"\n{m}{dim}q quit   p pause   t theme   m mode   +/- rate{r}"
+            res += f"\n{m}{dim}q quit   p pause   t theme   s symbol   m mode   +/- rate{r}"
         return res
 
     # 3. HERO & COMPACT MODES
@@ -889,9 +963,9 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
 
     # Hero usage bar
     bar_width = clamp(cols - 24, 16, 64)
-    smooth_bar = render_smooth_bar(used / total if total > 0 else 0, width=bar_width, pal=pal)
+    meter = render_meter_track(used / total if total > 0 else 0, width=bar_width, pal=pal, symbol=symbol)
     pct_color = g if used_pct < 60 else (w if used_pct < 85 else crit)
-    lines.append(smooth_bar)
+    lines.append(meter)
     lines.append(f"{pct_color}{bold}{used_pct:>5.1f}%{r}  {t}{bold}{format_bytes(used, 2)}{r}{m} used of {r}{t}{format_bytes(total, 2)}{r}")
     lines.append("")
 
@@ -901,17 +975,14 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
     swap_str = f"{format_bytes(mem.get('swap_used') or 0, 1)} ({mem.get('swap_desc', '')})"
 
     if cols >= 68:
-        # 6-column single-line grid on wide terminals
         lines.append(f"{m}USED          AVAILABLE     TOTAL         COMMIT              CACHED        SWAP{r}")
         lines.append(f"{g}{bold}{format_bytes(used, 2):<14}{r}{t}{bold}{format_bytes(available, 2):<14}{r}{t}{bold}{format_bytes(total, 2):<14}{r}{t}{commit_str:<20}{r}{t}{cached_str:<14}{r}{t}{swap_str}{r}")
     elif cols >= 50:
-        # 3-column wrapped grid on medium terminals
         lines.append(f"{m}USED          AVAILABLE     TOTAL{r}")
         lines.append(f"{g}{bold}{format_bytes(used, 2):<14}{r}{t}{bold}{format_bytes(available, 2):<14}{r}{t}{bold}{format_bytes(total, 2):<14}{r}")
         lines.append(f"{m}COMMIT              CACHED        SWAP{r}")
         lines.append(f"{t}{commit_str:<20}{r}{t}{cached_str:<14}{r}{t}{swap_str}{r}")
     else:
-        # Stacked single-column readout for very narrow panes (tmux splits, etc.)
         for label, value, color in (
             ("USED", format_bytes(used, 2), g),
             ("AVAILABLE", format_bytes(available, 2), t),
@@ -941,14 +1012,14 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
 
             rss_str = format_bytes(p["rss"], precision=1).rjust(8)
             p_pct = percentage(p["rss"], total)
-            p_bar = render_smooth_bar(p["rss"] / max_p_rss if max_p_rss > 0 else 0, width=p_bar_w, pal=pal)
+            p_meter = render_meter_track(p["rss"] / max_p_rss if max_p_rss > 0 else 0, width=p_bar_w, pal=pal, symbol=symbol)
 
-            lines.append(f"{t}{name_disp}{r}   {g}{rss_str}{r}   {p_bar}   {m}{p_pct:>4.1f}%{r}")
+            lines.append(f"{t}{name_disp}{r}   {g}{rss_str}{r}   {p_meter}   {m}{p_pct:>4.1f}%{r}")
 
     # Quiet footer
     lines.append("")
     lines.append(rule)
-    lines.append(f"{m}{dim}q quit   p pause   t theme   m mode   1/2 group   +/- rate{r}")
+    lines.append(f"{m}{dim}q quit   p pause   t theme   s symbol   m mode   1/2 group   +/- rate{r}")
 
     return "\n".join(lines)
 
@@ -973,8 +1044,9 @@ def parse_arguments(args=None):
     parser.add_argument("--mini", action="store_true", help="Mini mode: single usage bar + percentage only")
     parser.add_argument("--tiny", action="store_true", help="Tiny mode: single line output for status bars (Waybar/tmux)")
     
-    # Theme Engine
-    parser.add_argument("--theme", choices=THEME_NAMES, default="default", help="Color theme (default, catppuccin, nord, tokyo-night, dracula, gruvbox, cyberpunk, monochrome)")
+    # Theme Engine & Graph Symbol
+    parser.add_argument("--theme", choices=THEME_NAMES, default="default", help=f"Color theme ({', '.join(THEME_NAMES)})")
+    parser.add_argument("--symbol", choices=GRAPH_SYMBOLS, default="block", help="Meter graph style: 'block' or 'braille' (default: block)")
     parser.add_argument("-v", "--version", action="version", version=f"%(prog)s v{__version__}")
     
     parsed = parser.parse_args(args)
@@ -1004,6 +1076,7 @@ def main():
         current_mode = "tiny"
 
     current_theme = args.theme
+    current_symbol = args.symbol
 
     if not term.is_tty and not args.json and not args.once:
         args.once = True
@@ -1028,7 +1101,7 @@ def main():
         mem = get_meminfo()
         procs = get_processes(group_by_name=not args.no_group, limit=args.count) if current_mode == "hero" else []
         color_enabled = should_use_color(is_interactive=False)
-        print(render_snapshot(mem, procs, group_procs=not args.no_group, paused=False, mode=current_mode, theme=current_theme, enable_color=color_enabled))
+        print(render_snapshot(mem, procs, group_procs=not args.no_group, paused=False, mode=current_mode, theme=current_theme, symbol=current_symbol, enable_color=color_enabled))
         return
 
     # Interactive TUI Mode
@@ -1072,6 +1145,9 @@ def main():
                 elif ch in ("t", "T"):
                     idx = (THEME_NAMES.index(current_theme) + 1) % len(THEME_NAMES)
                     current_theme = THEME_NAMES[idx]
+                elif ch in ("s", "S"):
+                    idx = (GRAPH_SYMBOLS.index(current_symbol) + 1) % len(GRAPH_SYMBOLS)
+                    current_symbol = GRAPH_SYMBOLS[idx]
                 elif ch in ("m", "M"):
                     idx = (CYCLING_MODES.index(current_mode) + 1) % len(CYCLING_MODES) if current_mode in CYCLING_MODES else 0
                     current_mode = CYCLING_MODES[idx]
@@ -1087,6 +1163,7 @@ def main():
                     paused=paused,
                     mode=current_mode,
                     theme=current_theme,
+                    symbol=current_symbol,
                     enable_color=color_enabled,
                     show_help=show_help
                 )
