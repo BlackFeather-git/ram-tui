@@ -22,7 +22,7 @@ import shutil
 import heapq
 from datetime import datetime
 
-__version__ = "0.5.0-beta.3"
+__version__ = "0.5.0-beta.4"
 SYSTEM_OS = platform.system()
 
 PAGE_SIZE = 4096
@@ -346,7 +346,7 @@ def run_command(cmd, timeout=1.0):
 
 
 class TerminalManager:
-    """Manages raw terminal state, alternate screen buffer, cursor, and non-blocking input."""
+    """Manages raw terminal state, alternate screen buffer, cursor, and instantaneous non-blocking input."""
     def __init__(self):
         self.is_tty = sys.stdout.isatty() and sys.stdin.isatty()
         self.orig_termios = None
@@ -421,28 +421,42 @@ class TerminalManager:
                 except Exception:
                     pass
 
-    def check_key(self):
+    def get_keys(self, timeout=0.0):
+        """Wait up to timeout seconds for keypresses and return list of characters immediately."""
         if not self.is_tty:
-            return None
+            if timeout > 0:
+                time.sleep(timeout)
+            return []
+
         if SYSTEM_OS == "Windows":
             try:
                 import msvcrt
-                if msvcrt.kbhit():
-                    ch = msvcrt.getch()
-                    try:
-                        return ch.decode("utf-8", errors="ignore")
-                    except Exception:
-                        return None
+                deadline = time.monotonic() + timeout
+                keys = []
+                while True:
+                    if msvcrt.kbhit():
+                        ch = msvcrt.getch()
+                        try:
+                            keys.append(ch.decode("utf-8", errors="ignore"))
+                        except Exception:
+                            pass
+                    if keys or time.monotonic() >= deadline:
+                        break
+                    time.sleep(0.005)
+                return keys
             except Exception:
-                return None
+                if timeout > 0:
+                    time.sleep(timeout)
+                return []
         else:
             try:
-                r, _, _ = select.select([sys.stdin], [], [], 0)
+                r, _, _ = select.select([self.fd], [], [], max(0.0, timeout))
                 if r:
-                    return sys.stdin.read(1)
+                    data = os.read(self.fd, 64).decode("utf-8", errors="ignore")
+                    return list(data)
             except Exception:
-                return None
-        return None
+                pass
+            return []
 
 
 # ---------------------------------------------------------------------------
@@ -997,7 +1011,6 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
 
     # 4. PROCESS RANKING (Only in HERO mode, clamped to terminal height)
     if mode == "hero" and procs:
-        # Calculate exactly how many process rows fit without exceeding terminal height
         occupied_lines = len(lines) + 3  # +3 for header, divider, and footer
         available_slots = max(0, rows - occupied_lines - 1)
         visible_procs = procs[:available_slots] if available_slots > 0 else []
@@ -1131,13 +1144,32 @@ def main():
     term.setup_raw()
 
     try:
-        next_deadline = time.monotonic()
-
         while True:
-            ch = term.check_key()
-            if ch:
-                if ch in ("q", "Q", "\x03"):
+            # 1. Render snapshot
+            if not paused:
+                mem = get_meminfo()
+                procs = get_processes(group_by_name=group_procs, limit=proc_count) if current_mode == "hero" else []
+                output = render_snapshot(
+                    mem, procs,
+                    group_procs=group_procs,
+                    paused=paused,
+                    mode=current_mode,
+                    theme=current_theme,
+                    symbol=current_symbol,
+                    enable_color=color_enabled,
+                    show_help=show_help
+                )
+                try:
+                    sys.stdout.write(f"\033[H\033[2J{output}")
+                    sys.stdout.flush()
+                except BrokenPipeError:
                     break
+
+            # 2. Responsive non-blocking select wait for user keystrokes
+            keys = term.get_keys(timeout=refresh_ms / 1000.0)
+            for ch in keys:
+                if ch in ("q", "Q", "\x03"):
+                    cleanup_and_exit()
                 elif ch in ("p", "P", " "):
                     paused = not paused
                 elif ch in ("+", "="):
@@ -1159,32 +1191,6 @@ def main():
                     current_mode = CYCLING_MODES[idx]
                 elif ch in ("h", "H", "?"):
                     show_help = not show_help
-
-            if not paused:
-                mem = get_meminfo()
-                procs = get_processes(group_by_name=group_procs, limit=proc_count) if current_mode == "hero" else []
-                output = render_snapshot(
-                    mem, procs,
-                    group_procs=group_procs,
-                    paused=paused,
-                    mode=current_mode,
-                    theme=current_theme,
-                    symbol=current_symbol,
-                    enable_color=color_enabled,
-                    show_help=show_help
-                )
-                try:
-                    sys.stdout.write(f"\033[H\033[2J{output}")
-                    sys.stdout.flush()
-                except BrokenPipeError:
-                    break
-
-            next_deadline += (refresh_ms / 1000.0)
-            sleep_duration = next_deadline - time.monotonic()
-            if sleep_duration > 0:
-                time.sleep(sleep_duration)
-            else:
-                next_deadline = time.monotonic()
 
     except KeyboardInterrupt:
         pass

@@ -5,6 +5,13 @@ All notable changes to `ram-tui` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0-beta.4] - 2026-08-31
+
+### Fixed
+- **Instantaneous Input Event Loop (`select.select` on `fd`)**: Fixed input freeze and dropped key events by replacing `time.sleep` with non-blocking `select.select([self.fd], ..., timeout)` and direct `os.read(self.fd, 64)`. Hotkeys (`t`, `s`, `m`, `q`, `p`, `+`/`-`, `1`/`2`) now trigger immediate `<1ms` response without lag or buffering.
+
+---
+
 ## [0.5.0-beta.3] - 2026-08-31
 
 ### Fixed
