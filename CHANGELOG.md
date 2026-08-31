@@ -5,6 +5,29 @@ All notable changes to `ram-tui` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-08-31
+
+### Added
+- **13 Built-in 24-bit TrueColor Ricing Themes**: `default`, `dracula`, `catppuccin`, `nord`, `tokyo-night`, `gruvbox`, `cyberpunk`, `rose-pine`, `everforest`, `kanagawa`, `monokai`, `solarized`, and `monochrome` with live runtime switching (`t`).
+- **Multi-Display Modes**: `--hero` (default), `--compact` (meters only), `--mini` (single bar + percentage), and `--tiny` (single-line status bar format for Waybar/tmux/Polybar) with live hotkey toggling (`m`).
+- **Braille & Block Progress Engine**: `--symbol {block,braille}` with live `s` hotkey toggling 2-column horizontal sub-character Braille progress (`⣿`/`⡇`).
+- **Multi-Shell Static Completions**: Full static autocompletion scripts for **Bash** (`completions/ram.bash`), **Zsh** (`completions/_ram`), and **Fish** (`completions/ram.fish`).
+- **Cross-Platform Distribution Ecosystem**: Packaging formulas and manifests for **Arch Linux AUR** (`PKGBUILD`), **macOS Homebrew** (`packaging/homebrew/ram.rb`), **Windows Scoop** (`packaging/scoop/ram.json`, `ram.cmd`, `ram.ps1`), and **Debian/Ubuntu** (`packaging/debian/`).
+- **Interactive Help Overlay**: Active live hotkey cheat sheet (`h` / `?`).
+
+### Fixed & Hardened
+- **2D Physical Cell Geometry & Anti-Wrapping Guarantee**: Strict per-line printable cell clamping (`clamp_line_to_cols(line, cols)`) ensuring that no line ever wraps to 2+ physical rows under narrow splits (40x8, 30x6, 20x4).
+- **Unicode Display Width Arithmetic**: Standardized terminal display width calculation via `unicodedata` accurately handling wide East Asian characters (CJK = 2 cells), emoji, ZWJ sequences, and zero-width combining characters.
+- **Terminal & Alternate Screen Idempotency**: Full Alternate Screen Buffer (`\033[?1049h` / `\033[?1049l`) with re-entrant state tracking (`_raw_active`, `_alt_screen_active`) eliminating scrollback pollution and repeating headers in GPU terminals (Kitty, Alacritty, WezTerm).
+- **Instantaneous Input Event Loop**: Pure non-blocking `select.select([self.fd], ..., timeout)` and raw OS read for `<1ms` hotkey responsiveness.
+- **Kernel-Safe Platform Architecture**:
+  - Linux: PID starttime-keyed cache (`(pid, starttime)`) preventing PID-reuse race conditions and `/sys/block/zram*` fallback detection.
+  - Windows: Explicit pointer-sized ctypes Win32 types (`c_void_p`, `c_size_t`) and guaranteed `try...finally: CloseHandle(h_snap)` kernel handle release.
+  - macOS: Numeric `sysctl -n` parsing, non-negative value clamping, and compressed RAM accounting.
+- **POSIX Pipe & EPIPE Lifecycle**: Protected `--once` and `--json` against `BrokenPipeError` when piped downstream into `head`, `grep`, or jq.
+
+---
+
 ## [0.5.0-beta.8] - 2026-08-31
 
 ### Added
