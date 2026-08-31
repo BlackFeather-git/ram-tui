@@ -5,6 +5,16 @@ All notable changes to `ram-tui` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0-beta.6] - 2026-08-31
+
+### Fixed
+- **2D Physical Cell Geometry & Anti-Wrapping Guarantee (`C-001`)**: Implemented complete per-line printable cell clamping (`clamp_line_to_cols(line, cols)`) ensuring that no line ever wraps to 2+ physical rows, preventing horizontal overflow from breaking vertical height bounds in narrow splits (40x8, 30x6, 20x4).
+- **Unicode Display Width Arithmetic (`C-002`)**: Standardized terminal display width calculation via `unicodedata` (`char_cell_width`, `visible_cell_width`, `truncate_plain_cells`) accurately handling wide East Asian characters (CJK = 2 cells), emoji, and zero-width combining characters.
+- **Alternate Screen Buffer State Tracking (`C-003`)**: Added explicit `_alt_screen_active` state tracking in `TerminalManager` to ensure matching restore sequences only execute when alternate screen entry succeeds.
+- **CI Matrix Trigger Coverage (`E-001`)**: Updated `.github/workflows/test.yml` to trigger automated multi-platform testing on the `beta` branch across Ubuntu, macOS, and Windows.
+
+---
+
 ## [0.5.0-beta.5] - 2026-08-31
 
 ### Fixed

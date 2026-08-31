@@ -218,6 +218,36 @@ class TerminalAndCliTests(unittest.TestCase):
             self.assertIn("HOTKEYS:", rendered_with_help)
             self.assertIn("p/space", rendered_with_help)
 
+    def test_unicode_cell_width_measurement(self):
+        cjk_str = "你好世界"  # 4 characters, 8 cells
+        self.assertEqual(ram.visible_cell_width(cjk_str), 8)
+        truncated = ram.truncate_plain_cells(cjk_str, 5, ellipsis="~")
+        self.assertLessEqual(ram.visible_cell_width(truncated), 5)
+
+    def test_hostile_geometry_bounds(self):
+        mem = {
+            "total": 32 * 1024**3,
+            "available": 24 * 1024**3,
+            "used": 8 * 1024**3,
+            "commit_as": None,
+            "commit_limit": None,
+            "cached": None,
+            "swap_used": 0,
+            "swap_total": 0,
+            "swap_desc": "none",
+            "valid": True
+        }
+        procs = [{"name": f"proc_超長進程名_{i}", "rss": 1024**3, "count": 1, "pid": i} for i in range(15)]
+        hostile_dims = [(40, 8), (30, 6), (20, 4), (50, 12), (80, 24)]
+        for cols, rows in hostile_dims:
+            with mock.patch("shutil.get_terminal_size", return_value=os.terminal_size((cols, rows))):
+                rendered = ram.render_snapshot(mem, procs, mode="hero", enable_color=False)
+                lines = rendered.splitlines()
+                self.assertLessEqual(len(lines), rows, f"Total lines {len(lines)} > rows {rows} for {cols}x{rows}")
+                for l in lines:
+                    w = ram.visible_cell_width(l)
+                    self.assertLessEqual(w, cols, f"Line width {w} > cols {cols} in: {repr(l)}")
+
     def test_terminal_manager_idempotent_restore(self):
         tm = ram.TerminalManager()
         tm._restored = False

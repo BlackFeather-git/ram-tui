@@ -20,9 +20,10 @@ import sys
 import time
 import shutil
 import heapq
+import unicodedata
 from datetime import datetime
 
-__version__ = "0.5.0-beta.5"
+__version__ = "0.5.0-beta.6"
 SYSTEM_OS = platform.system()
 
 PAGE_SIZE = 4096
@@ -40,6 +41,58 @@ ANSI_ESCAPE_RE = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
 # Unicode bidirectional control characters to strip for terminal integrity
 BIDI_CHARS = set("\u200e\u200f\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069")
+
+
+# ---------------------------------------------------------------------------
+# Unicode Cell Width & Display Arithmetic (C-001 / C-002)
+# ---------------------------------------------------------------------------
+
+def char_cell_width(ch):
+    """Calculates terminal column display width for a single character."""
+    if unicodedata.combining(ch) or unicodedata.category(ch) in ("Cc", "Cf", "Cs"):
+        return 0
+    if unicodedata.east_asian_width(ch) in ("W", "F"):
+        return 2
+    return 1
+
+
+def visible_cell_width(s):
+    """Returns exact printable terminal column width of a string (stripping ANSI escapes)."""
+    if not s:
+        return 0
+    plain = ANSI_ESCAPE_RE.sub("", s)
+    return sum(char_cell_width(c) for c in plain)
+
+
+def truncate_plain_cells(text, max_cells, ellipsis="~"):
+    """Truncates plain text to fit strictly within max_cells terminal columns."""
+    if max_cells <= 0:
+        return ""
+    total_w = visible_cell_width(text)
+    if total_w <= max_cells:
+        return text
+    el_width = visible_cell_width(ellipsis)
+    target_w = max(0, max_cells - el_width)
+    cur_width = 0
+    result = []
+    for c in text:
+        w = char_cell_width(c)
+        if cur_width + w > target_w:
+            break
+        result.append(c)
+        cur_width += w
+    return "".join(result) + ellipsis
+
+
+def clamp_line_to_cols(line, max_cols):
+    """Ensures a line (including ANSI codes) never exceeds max_cols display cells."""
+    if max_cols <= 0:
+        return ""
+    w = visible_cell_width(line)
+    if w <= max_cols:
+        return line
+    plain = ANSI_ESCAPE_RE.sub("", line)
+    return truncate_plain_cells(plain, max_cols, ellipsis="")
 
 
 # ---------------------------------------------------------------------------
@@ -354,6 +407,7 @@ class TerminalManager:
         self.h_stdout = None
         self.orig_console_mode = None
         self._restored = False
+        self._alt_screen_active = False
 
         if self.is_tty:
             try:
@@ -395,8 +449,9 @@ class TerminalManager:
                 # Switch to Alternate Screen Buffer, hide cursor, and clear screen
                 sys.stdout.write("\033[?1049h\033[?25l\033[H\033[2J")
                 sys.stdout.flush()
+                self._alt_screen_active = True
             except Exception:
-                pass
+                self._alt_screen_active = False
 
     def restore(self):
         if self._restored:
@@ -405,8 +460,10 @@ class TerminalManager:
 
         if self.is_tty:
             try:
-                # Restore main screen buffer and unhide cursor
-                sys.stdout.write("\033[?1049l\033[?25h\033[0m")
+                if self._alt_screen_active:
+                    sys.stdout.write("\033[?1049l\033[?25h\033[0m")
+                else:
+                    sys.stdout.write("\033[?25h\033[0m")
                 sys.stdout.flush()
             except Exception:
                 pass
@@ -889,6 +946,7 @@ def render_meter_track(ratio, width=32, pal=None, symbol="block"):
     """Renders progress bar with sub-character accuracy in Block or Braille style."""
     pal = pal or get_palette("monochrome", False)
     ratio = clamp(ratio, 0.0, 1.0)
+    width = max(1, width)
 
     if ratio < 0.60:
         c = pal["GOOD"]
@@ -916,13 +974,8 @@ def render_meter_track(ratio, width=32, pal=None, symbol="block"):
         return f"{filled_part}{empty_part}"
 
 
-def visible_len(s):
-    """Printable width of a string, ignoring ANSI escape codes (for alignment math)."""
-    return len(ANSI_ESCAPE_RE.sub("", s))
-
-
 def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", theme="default", symbol="block", enable_color=True, show_help=False):
-    """Renders clean dashboard with strict viewport height budgeting (C-002) and active help overlay (C-003)."""
+    """Renders dashboard with 2D physical terminal cell bounds (C-001/C-002) and active help overlay (C-003)."""
     pal = get_palette(theme, enable_color)
     hostname = sanitize_text(socket.gethostname())
     now_str = datetime.now().strftime("%H:%M:%S")
@@ -933,8 +986,8 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
     used_pct = percentage(used, total)
 
     term_size = shutil.get_terminal_size((80, 24))
-    cols = term_size.columns
-    rows = term_size.lines
+    cols = max(16, term_size.columns)
+    rows = max(1, term_size.lines)
 
     r = pal["RESET"]
     t = pal["TEXT"]
@@ -947,48 +1000,63 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
     dim = pal["DIM"]
     bold = pal["BOLD"]
 
-    # Strict Height Degradation Fallbacks (C-002)
     # 1. TINY / ULTRA-SHORT VIEWPORTS (< 4 rows)
     if mode == "tiny" or rows <= 3:
         used_str = format_bytes(used, precision=1)
         total_str = format_bytes(total, precision=1)
-        res = f"RAM: {used_str} / {total_str} ({used_pct:.1f}%)"
+        res = clamp_line_to_cols(f"RAM: {used_str} / {total_str} ({used_pct:.1f}%)", cols)
         if show_help and rows >= 2:
-            res += f"\n{m}q quit   p pause   t theme   s symbol   m mode   +/- rate   h help{r}"
+            help_line = clamp_line_to_cols(f"{m}q:quit p:pause t:theme s:symbol m:mode +/-:rate h:help{r}", cols)
+            res += f"\n{help_line}"
         return res
 
     # 2. MINI / SHORT VIEWPORTS (< 7 rows)
     if mode == "mini" or rows < 7:
-        bar_w = clamp(cols - 32, 10, 44)
+        bar_w = max(4, min(cols - 28, 44))
         meter = render_meter_track(used / total if total > 0 else 0, width=bar_w, pal=pal, symbol=symbol)
         pct_color = g if used_pct < 60 else (w if used_pct < 85 else crit)
-        res = f"{h}{bold}RAM{r}  {meter}  {pct_color}{bold}{used_pct:>5.1f}%{r}  {t}{format_bytes(used, 1)}{r}{m} / {r}{t}{format_bytes(total, 1)}{r}"
+        line1 = clamp_line_to_cols(f"{h}{bold}RAM{r}  {meter}  {pct_color}{bold}{used_pct:>5.1f}%{r}  {t}{format_bytes(used, 1)}{r}{m}/{r}{t}{format_bytes(total, 1)}{r}", cols)
         if show_help and rows >= 2:
-            res += f"\n{m}{dim}q quit   p pause   t theme   s symbol   m mode   1/2 group   +/- rate   h help{r}"
-        return res
+            line2 = clamp_line_to_cols(f"{m}{dim}q:quit p:pause t:theme s:symbol m:mode 1/2:group +/-:rate h:help{r}", cols)
+            return f"{line1}\n{line2}"
+        return line1
 
-    # 3. HERO & COMPACT MODES (Strictly height-budgeted)
+    # 3. HERO & COMPACT MODES (Strictly height and width bounded)
     lines = []
-    rule_w = clamp(cols, 24, 96)
-    rule = f"{m}{dim}{'─' * rule_w}{r}"
+    rule = f"{m}{dim}{'─' * cols}{r}"
 
     # Header line
     state_str = f"  {w}{bold}paused{r}" if paused else ""
-    header_left = (
-        f"{h}{bold}RAM{r}  {m}·{r}  {t}{hostname}{r}  {m}·{r}  "
-        f"{m}{SYSTEM_OS} {platform.machine()}{r}  {m}·{r}  {a}{theme}{r}{state_str}"
-    )
     clock = f"{m}{now_str}{r}"
-    gap = max(2, rule_w - visible_len(header_left) - visible_len(clock))
-    lines.append(f"{header_left}{' ' * gap}{clock}")
+    clock_w = visible_cell_width(clock)
+
+    if cols >= 64:
+        header_left = (
+            f"{h}{bold}RAM{r}  {m}·{r}  {t}{truncate_plain_cells(hostname, 16)}{r}  {m}·{r}  "
+            f"{m}{SYSTEM_OS} {platform.machine()}{r}  {m}·{r}  {a}{theme}{r}{state_str}"
+        )
+    elif cols >= 44:
+        header_left = f"{h}{bold}RAM{r}  {m}·{r}  {t}{truncate_plain_cells(hostname, 12)}{r}  {m}·{r}  {a}{theme}{r}{state_str}"
+    else:
+        header_left = f"{h}{bold}RAM{r}  {m}·{r}  {a}{theme}{r}{state_str}"
+
+    left_w = visible_cell_width(header_left)
+    if left_w + clock_w + 2 <= cols:
+        gap = cols - left_w - clock_w
+        lines.append(f"{header_left}{' ' * gap}{clock}")
+    elif left_w <= cols:
+        lines.append(header_left)
+    else:
+        lines.append(clamp_line_to_cols(header_left, cols))
+
     lines.append(rule)
 
     # Hero usage bar
-    bar_width = clamp(cols - 24, 16, 64)
+    bar_width = max(4, min(cols - 16, 64))
     meter = render_meter_track(used / total if total > 0 else 0, width=bar_width, pal=pal, symbol=symbol)
     pct_color = g if used_pct < 60 else (w if used_pct < 85 else crit)
-    lines.append(meter)
-    lines.append(f"{pct_color}{bold}{used_pct:>5.1f}%{r}  {t}{bold}{format_bytes(used, 2)}{r}{m} used of {r}{t}{format_bytes(total, 2)}{r}")
+    lines.append(clamp_line_to_cols(meter, cols))
+    lines.append(clamp_line_to_cols(f"{pct_color}{bold}{used_pct:>5.1f}%{r}  {t}{bold}{format_bytes(used, 2)}{r}{m} used of {r}{t}{format_bytes(total, 2)}{r}", cols))
 
     # Metrics Breakdown Budgeting
     footer_reserve = 2
@@ -1002,13 +1070,13 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
             lines.append("")
 
         if cols >= 68:
-            lines.append(f"{m}USED          AVAILABLE     TOTAL         COMMIT              CACHED        SWAP{r}")
-            lines.append(f"{g}{bold}{format_bytes(used, 2):<14}{r}{t}{bold}{format_bytes(available, 2):<14}{r}{t}{bold}{format_bytes(total, 2):<14}{r}{t}{commit_str:<20}{r}{t}{cached_str:<14}{r}{t}{swap_str}{r}")
-        elif cols >= 50:
-            lines.append(f"{m}USED          AVAILABLE     TOTAL{r}")
-            lines.append(f"{g}{bold}{format_bytes(used, 2):<14}{r}{t}{bold}{format_bytes(available, 2):<14}{r}{t}{bold}{format_bytes(total, 2):<14}{r}")
+            lines.append(clamp_line_to_cols(f"{m}USED          AVAILABLE     TOTAL         COMMIT              CACHED        SWAP{r}", cols))
+            lines.append(clamp_line_to_cols(f"{g}{bold}{format_bytes(used, 2):<14}{r}{t}{bold}{format_bytes(available, 2):<14}{r}{t}{bold}{format_bytes(total, 2):<14}{r}{t}{commit_str:<20}{r}{t}{cached_str:<14}{r}{t}{swap_str}{r}", cols))
+        elif cols >= 44:
+            lines.append(clamp_line_to_cols(f"{m}USED          AVAILABLE     TOTAL{r}", cols))
+            lines.append(clamp_line_to_cols(f"{g}{bold}{format_bytes(used, 2):<14}{r}{t}{bold}{format_bytes(available, 2):<14}{r}{t}{bold}{format_bytes(total, 2):<14}{r}", cols))
         else:
-            lines.append(f"{m}USED:{r} {g}{bold}{format_bytes(used, 2)}{r}  {m}AVAIL:{r} {t}{bold}{format_bytes(available, 2)}{r}  {m}TOTAL:{r} {t}{bold}{format_bytes(total, 2)}{r}")
+            lines.append(clamp_line_to_cols(f"{m}USED:{r} {g}{bold}{format_bytes(used, 1)}{r}  {m}AVAIL:{r} {t}{bold}{format_bytes(available, 1)}{r}", cols))
 
     # Process Ranking (HERO mode only, strictly clamped to remaining space)
     if mode == "hero" and procs:
@@ -1020,35 +1088,38 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
             if rows >= 24:
                 lines.append("")
             mode_label = "RESIDENT SET" if group_procs else "PID"
-            lines.append(f"{m}PROCESS ({mode_label}){r}        {m}RSS{r}        {m}USAGE{r}                {m}SHARE{r}")
+            lines.append(clamp_line_to_cols(f"{m}PROCESS ({mode_label})        RSS        USAGE                SHARE{r}", cols))
 
-            max_p_rss = procs[0]["rss"] if procs else 1
-            name_width = clamp(cols - 48, 10, 22)
-            p_bar_w = clamp(cols - 46, 6, 20)
+            name_w = max(6, min(cols - 26, 20))
+            p_bar_w = max(4, min(cols - name_w - 20, 16))
 
             for p in visible_procs:
                 count_str = f" ({p['count']})" if p.get("count", 1) > 1 else ""
                 name_full = f"{p['name']}{count_str}"
-                name_disp = (name_full[:name_width - 1] + "~") if len(name_full) > name_width else name_full.ljust(name_width)
+                name_disp = truncate_plain_cells(name_full, name_w)
 
-                rss_str = format_bytes(p["rss"], precision=1).rjust(8)
+                rss_str = format_bytes(p["rss"], precision=1).rjust(7)
                 p_pct = percentage(p["rss"], total)
-                p_meter = render_meter_track(p["rss"] / max_p_rss if max_p_rss > 0 else 0, width=p_bar_w, pal=pal, symbol=symbol)
+                p_meter = render_meter_track(p["rss"] / max(1, procs[0]["rss"]), width=p_bar_w, pal=pal, symbol=symbol)
 
-                lines.append(f"{t}{name_disp}{r}   {g}{rss_str}{r}   {p_meter}   {m}{p_pct:>4.1f}%{r}")
+                p_line = f"{t}{name_disp:<{name_w}}{r}   {g}{rss_str}{r}   {p_meter}   {m}{p_pct:>5.1f}%{r}"
+                lines.append(clamp_line_to_cols(p_line, cols))
 
     # Footer & Help Overlay (C-003)
     lines.append(rule)
     if show_help:
-        lines.append(f"{h}{bold}HOTKEYS:{r} {t}q{r} quit  {t}p/space{r} pause  {t}t{r} theme  {t}s{r} symbol  {t}m{r} mode  {t}1/2{r} group  {t}+/-{r} rate  {t}h{r} close")
+        lines.append(clamp_line_to_cols(f"{h}{bold}HOTKEYS:{r} {t}q{r} quit  {t}p/space{r} pause  {t}t{r} theme  {t}s{r} symbol  {t}m{r} mode  {t}1/2{r} group  {t}+/-{r} rate  {t}h{r} close", cols))
     else:
-        lines.append(f"{m}{dim}q quit   p pause   t theme   s symbol   m mode   1/2 group   +/- rate   h help{r}")
+        lines.append(clamp_line_to_cols(f"{m}{dim}q quit   p pause   t theme   s symbol   m mode   1/2 group   +/- rate   h help{r}", cols))
 
-    # Guaranteed Height Safety Invariant (Never exceed rows under any split or resize)
-    if len(lines) > rows:
-        lines = lines[:rows]
+    # Guaranteed 2D Physical Safety Invariant:
+    # 1. Every line is clamped to <= cols printable cells (prevent horizontal wrap).
+    # 2. Total lines <= rows (prevent vertical scroll).
+    clamped_lines = [clamp_line_to_cols(line, cols) for line in lines]
+    if len(clamped_lines) > rows:
+        clamped_lines = clamped_lines[:rows]
 
-    return "\n".join(lines)
+    return "\n".join(clamped_lines)
 
 
 # ---------------------------------------------------------------------------
