@@ -12,6 +12,7 @@ import ast
 import base64
 import ctypes
 import hashlib
+import hmac
 import json
 import os
 import platform
@@ -30,7 +31,7 @@ import unicodedata
 import urllib.request
 from datetime import datetime
 
-__version__ = "0.6.0-beta.1"
+__version__ = "0.6.0-rc.1"
 SYSTEM_OS = platform.system()
 
 PAGE_SIZE = 4096
@@ -1076,7 +1077,9 @@ def verify_release_signature(data, signature_b64):
         em = decrypted_int.to_bytes(k, "big")
 
         expected_digest = ASN1_SHA256_PREFIX + hashlib.sha256(data).digest()
-        if not (em.startswith(b"\x00\x01") and em.endswith(expected_digest)):
+        if not em.startswith(b"\x00\x01"):
+            return False
+        if not hmac.compare_digest(em[-len(expected_digest):], expected_digest):
             return False
 
         pad = em[2:-len(expected_digest)]
