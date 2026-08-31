@@ -189,6 +189,35 @@ class TerminalAndCliTests(unittest.TestCase):
             self.assertIn("RAM", rendered)
             self.assertIn("USED", rendered)
 
+    def test_viewport_height_budgeting(self):
+        mem = {
+            "total": 32 * 1024**3,
+            "available": 24 * 1024**3,
+            "used": 8 * 1024**3,
+            "commit_as": None,
+            "commit_limit": None,
+            "cached": None,
+            "swap_used": 0,
+            "swap_total": 0,
+            "swap_desc": "none",
+            "valid": True
+        }
+        procs = [{"name": f"proc_{i}", "rss": 1024**3, "count": 1, "pid": i} for i in range(20)]
+        for h in [2, 5, 8, 12, 16, 20, 24]:
+            with mock.patch("shutil.get_terminal_size", return_value=os.terminal_size((80, h))):
+                rendered = ram.render_snapshot(mem, procs, mode="hero", enable_color=False)
+                lines = rendered.splitlines()
+                self.assertLessEqual(len(lines), h, f"Rendered {len(lines)} lines exceeded terminal height {h}")
+
+    def test_help_overlay_toggle(self):
+        mem = {"total": 32 * 1024**3, "available": 24 * 1024**3, "used": 8 * 1024**3, "valid": True}
+        with mock.patch("shutil.get_terminal_size", return_value=os.terminal_size((80, 24))):
+            rendered_no_help = ram.render_snapshot(mem, [], mode="hero", enable_color=False, show_help=False)
+            rendered_with_help = ram.render_snapshot(mem, [], mode="hero", enable_color=False, show_help=True)
+            self.assertIn("q quit", rendered_no_help)
+            self.assertIn("HOTKEYS:", rendered_with_help)
+            self.assertIn("p/space", rendered_with_help)
+
     def test_terminal_manager_idempotent_restore(self):
         tm = ram.TerminalManager()
         tm._restored = False

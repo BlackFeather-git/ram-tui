@@ -5,6 +5,15 @@ All notable changes to `ram-tui` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0-beta.5] - 2026-08-31
+
+### Fixed
+- **Windows Snapshot Handle Ownership (`C-001` / `C-004`)**: Wrapped `CreateToolhelp32Snapshot` process enumeration in strict `try...finally: CloseHandle(h_snap)` block, preventing kernel handle leaks across unexpected exceptions.
+- **Strict Viewport Height Budgeting (`C-002`)**: Implemented full-stack viewport height budgeting and progressive degradation (`tiny` for $\le 3$ rows, `mini` for $< 7$ rows, clamped metrics & process slots for larger splits), mathematically guaranteeing that total rendered lines never exceed terminal height.
+- **Interactive Help Overlay (`C-003`)**: Enabled active `h` / `?` help cheat sheet across all display modes (`hero`, `compact`, `mini`, `tiny`).
+
+---
+
 ## [0.5.0-beta.4] - 2026-08-31
 
 ### Fixed

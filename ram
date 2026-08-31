@@ -22,7 +22,7 @@ import shutil
 import heapq
 from datetime import datetime
 
-__version__ = "0.5.0-beta.4"
+__version__ = "0.5.0-beta.5"
 SYSTEM_OS = platform.system()
 
 PAGE_SIZE = 4096
@@ -391,9 +391,12 @@ class TerminalManager:
                     tty.setcbreak(self.fd)
                 except Exception:
                     pass
-            # Switch to Alternate Screen Buffer, hide cursor, and clear screen
-            sys.stdout.write("\033[?1049h\033[?25l\033[H\033[2J")
-            sys.stdout.flush()
+            try:
+                # Switch to Alternate Screen Buffer, hide cursor, and clear screen
+                sys.stdout.write("\033[?1049h\033[?25l\033[H\033[2J")
+                sys.stdout.flush()
+            except Exception:
+                pass
 
     def restore(self):
         if self._restored:
@@ -760,6 +763,7 @@ def get_processes_linux(group_by_name=True, limit=8):
 
 
 def get_processes_windows(group_by_name=True, limit=8):
+    """Enumerates Windows processes with guaranteed try/finally snapshot handle cleanup (C-001/C-004)."""
     procs = {}
     try:
         class PROCESSENTRY32W(ctypes.Structure):
@@ -801,37 +805,39 @@ def get_processes_windows(group_by_name=True, limit=8):
         if not h_snap or h_snap == INVALID_HANDLE_VALUE or h_snap == -1:
             return []
 
-        pe = PROCESSENTRY32W()
-        pe.dwSize = ctypes.sizeof(PROCESSENTRY32W)
+        try:
+            pe = PROCESSENTRY32W()
+            pe.dwSize = ctypes.sizeof(PROCESSENTRY32W)
 
-        if k32.Process32FirstW(h_snap, ctypes.byref(pe)):
-            while True:
-                pid = pe.th32ProcessID
-                name = sanitize_text(pe.szExeFile)
-                if pid > 0:
-                    h_proc = k32.OpenProcess(0x0400 | 0x0010, False, pid)
-                    if h_proc and h_proc != INVALID_HANDLE_VALUE:
-                        try:
-                            pmc = PROCESS_MEMORY_COUNTERS()
-                            pmc.cb = ctypes.sizeof(PROCESS_MEMORY_COUNTERS)
-                            if psapi_mem and psapi_mem(h_proc, ctypes.byref(pmc), pmc.cb):
-                                rss_bytes = pmc.WorkingSetSize
-                                if rss_bytes > 0:
-                                    if group_by_name:
-                                        if name in procs:
-                                            procs[name]["rss"] += rss_bytes
-                                            procs[name]["count"] += 1
+            if k32.Process32FirstW(h_snap, ctypes.byref(pe)):
+                while True:
+                    pid = pe.th32ProcessID
+                    name = sanitize_text(pe.szExeFile)
+                    if pid > 0:
+                        h_proc = k32.OpenProcess(0x0400 | 0x0010, False, pid)
+                        if h_proc and h_proc != INVALID_HANDLE_VALUE:
+                            try:
+                                pmc = PROCESS_MEMORY_COUNTERS()
+                                pmc.cb = ctypes.sizeof(PROCESS_MEMORY_COUNTERS)
+                                if psapi_mem and psapi_mem(h_proc, ctypes.byref(pmc), pmc.cb):
+                                    rss_bytes = pmc.WorkingSetSize
+                                    if rss_bytes > 0:
+                                        if group_by_name:
+                                            if name in procs:
+                                                procs[name]["rss"] += rss_bytes
+                                                procs[name]["count"] += 1
+                                            else:
+                                                procs[name] = {"name": name, "rss": rss_bytes, "count": 1, "pid": None}
                                         else:
-                                            procs[name] = {"name": name, "rss": rss_bytes, "count": 1, "pid": None}
-                                    else:
-                                        procs[pid] = {"name": f"{name} [{pid}]", "rss": rss_bytes, "count": 1, "pid": pid}
-                        finally:
-                            k32.CloseHandle(h_proc)
+                                            procs[pid] = {"name": f"{name} [{pid}]", "rss": rss_bytes, "count": 1, "pid": pid}
+                            finally:
+                                k32.CloseHandle(h_proc)
 
-                if not k32.Process32NextW(h_snap, ctypes.byref(pe)):
-                    break
+                    if not k32.Process32NextW(h_snap, ctypes.byref(pe)):
+                        break
+        finally:
+            k32.CloseHandle(h_snap)
 
-        k32.CloseHandle(h_snap)
     except Exception:
         pass
 
@@ -916,7 +922,7 @@ def visible_len(s):
 
 
 def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", theme="default", symbol="block", enable_color=True, show_help=False):
-    """Renders clean, breathable, modern dashboard across all display modes with height bounds."""
+    """Renders clean dashboard with strict viewport height budgeting (C-002) and active help overlay (C-003)."""
     pal = get_palette(theme, enable_color)
     hostname = sanitize_text(socket.gethostname())
     now_str = datetime.now().strftime("%H:%M:%S")
@@ -941,30 +947,32 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
     dim = pal["DIM"]
     bold = pal["BOLD"]
 
-    # 1. TINY MODE (Single line for Waybar / tmux / status bars)
-    if mode == "tiny":
+    # Strict Height Degradation Fallbacks (C-002)
+    # 1. TINY / ULTRA-SHORT VIEWPORTS (< 4 rows)
+    if mode == "tiny" or rows <= 3:
         used_str = format_bytes(used, precision=1)
         total_str = format_bytes(total, precision=1)
         res = f"RAM: {used_str} / {total_str} ({used_pct:.1f}%)"
-        if show_help:
-            res += f"\n{m}q quit   p pause   t theme   s symbol   m mode{r}"
+        if show_help and rows >= 2:
+            res += f"\n{m}q quit   p pause   t theme   s symbol   m mode   +/- rate   h help{r}"
         return res
 
-    # 2. MINI MODE (Clean single-line meter)
-    if mode == "mini":
+    # 2. MINI / SHORT VIEWPORTS (< 7 rows)
+    if mode == "mini" or rows < 7:
         bar_w = clamp(cols - 32, 10, 44)
         meter = render_meter_track(used / total if total > 0 else 0, width=bar_w, pal=pal, symbol=symbol)
         pct_color = g if used_pct < 60 else (w if used_pct < 85 else crit)
         res = f"{h}{bold}RAM{r}  {meter}  {pct_color}{bold}{used_pct:>5.1f}%{r}  {t}{format_bytes(used, 1)}{r}{m} / {r}{t}{format_bytes(total, 1)}{r}"
-        if show_help:
-            res += f"\n{m}{dim}q quit   p pause   t theme   s symbol   m mode   +/- rate{r}"
+        if show_help and rows >= 2:
+            res += f"\n{m}{dim}q quit   p pause   t theme   s symbol   m mode   1/2 group   +/- rate   h help{r}"
         return res
 
-    # 3. HERO & COMPACT MODES
+    # 3. HERO & COMPACT MODES (Strictly height-budgeted)
     lines = []
     rule_w = clamp(cols, 24, 96)
     rule = f"{m}{dim}{'─' * rule_w}{r}"
 
+    # Header line
     state_str = f"  {w}{bold}paused{r}" if paused else ""
     header_left = (
         f"{h}{bold}RAM{r}  {m}·{r}  {t}{hostname}{r}  {m}·{r}  "
@@ -982,41 +990,34 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
     lines.append(meter)
     lines.append(f"{pct_color}{bold}{used_pct:>5.1f}%{r}  {t}{bold}{format_bytes(used, 2)}{r}{m} used of {r}{t}{format_bytes(total, 2)}{r}")
 
-    # Clean Unboxed Metrics Breakdown Grid
+    # Metrics Breakdown Budgeting
+    footer_reserve = 2
     commit_str = f"{format_bytes(mem.get('commit_as') or 0, 1)}/{format_bytes(mem.get('commit_limit') or total, 1)}" if mem.get("commit_as") is not None else "N/A"
     cached_str = format_bytes(mem.get("cached", 0), 1) if mem.get("cached") is not None else "N/A"
     swap_str = f"{format_bytes(mem.get('swap_used') or 0, 1)} ({mem.get('swap_desc', '')})"
 
-    if rows >= 24:
-        lines.append("")
+    # Only include breakdown grid if it fits comfortably within terminal rows
+    if rows >= len(lines) + 2 + footer_reserve:
+        if rows >= 22:
+            lines.append("")
 
-    if cols >= 68:
-        lines.append(f"{m}USED          AVAILABLE     TOTAL         COMMIT              CACHED        SWAP{r}")
-        lines.append(f"{g}{bold}{format_bytes(used, 2):<14}{r}{t}{bold}{format_bytes(available, 2):<14}{r}{t}{bold}{format_bytes(total, 2):<14}{r}{t}{commit_str:<20}{r}{t}{cached_str:<14}{r}{t}{swap_str}{r}")
-    elif cols >= 50:
-        lines.append(f"{m}USED          AVAILABLE     TOTAL{r}")
-        lines.append(f"{g}{bold}{format_bytes(used, 2):<14}{r}{t}{bold}{format_bytes(available, 2):<14}{r}{t}{bold}{format_bytes(total, 2):<14}{r}")
-        lines.append(f"{m}COMMIT              CACHED        SWAP{r}")
-        lines.append(f"{t}{commit_str:<20}{r}{t}{cached_str:<14}{r}{t}{swap_str}{r}")
-    else:
-        for label, value, color in (
-            ("USED", format_bytes(used, 2), g),
-            ("AVAILABLE", format_bytes(available, 2), t),
-            ("TOTAL", format_bytes(total, 2), t),
-            ("COMMIT", commit_str, t),
-            ("CACHED", cached_str, t),
-            ("SWAP", swap_str, t),
-        ):
-            lines.append(f"{m}{label:<11}{r}{color}{bold}{value}{r}")
+        if cols >= 68:
+            lines.append(f"{m}USED          AVAILABLE     TOTAL         COMMIT              CACHED        SWAP{r}")
+            lines.append(f"{g}{bold}{format_bytes(used, 2):<14}{r}{t}{bold}{format_bytes(available, 2):<14}{r}{t}{bold}{format_bytes(total, 2):<14}{r}{t}{commit_str:<20}{r}{t}{cached_str:<14}{r}{t}{swap_str}{r}")
+        elif cols >= 50:
+            lines.append(f"{m}USED          AVAILABLE     TOTAL{r}")
+            lines.append(f"{g}{bold}{format_bytes(used, 2):<14}{r}{t}{bold}{format_bytes(available, 2):<14}{r}{t}{bold}{format_bytes(total, 2):<14}{r}")
+        else:
+            lines.append(f"{m}USED:{r} {g}{bold}{format_bytes(used, 2)}{r}  {m}AVAIL:{r} {t}{bold}{format_bytes(available, 2)}{r}  {m}TOTAL:{r} {t}{bold}{format_bytes(total, 2)}{r}")
 
-    # 4. PROCESS RANKING (Only in HERO mode, clamped to terminal height)
+    # Process Ranking (HERO mode only, strictly clamped to remaining space)
     if mode == "hero" and procs:
-        occupied_lines = len(lines) + 3  # +3 for header, divider, and footer
-        available_slots = max(0, rows - occupied_lines - 1)
+        needed_for_proc_header = 1
+        available_slots = max(0, rows - len(lines) - needed_for_proc_header - footer_reserve)
         visible_procs = procs[:available_slots] if available_slots > 0 else []
 
         if visible_procs:
-            if rows >= 26:
+            if rows >= 24:
                 lines.append("")
             mode_label = "RESIDENT SET" if group_procs else "PID"
             lines.append(f"{m}PROCESS ({mode_label}){r}        {m}RSS{r}        {m}USAGE{r}                {m}SHARE{r}")
@@ -1036,9 +1037,16 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
 
                 lines.append(f"{t}{name_disp}{r}   {g}{rss_str}{r}   {p_meter}   {m}{p_pct:>4.1f}%{r}")
 
-    # Quiet footer
+    # Footer & Help Overlay (C-003)
     lines.append(rule)
-    lines.append(f"{m}{dim}q quit   p pause   t theme   s symbol   m mode   1/2 group   +/- rate{r}")
+    if show_help:
+        lines.append(f"{h}{bold}HOTKEYS:{r} {t}q{r} quit  {t}p/space{r} pause  {t}t{r} theme  {t}s{r} symbol  {t}m{r} mode  {t}1/2{r} group  {t}+/-{r} rate  {t}h{r} close")
+    else:
+        lines.append(f"{m}{dim}q quit   p pause   t theme   s symbol   m mode   1/2 group   +/- rate   h help{r}")
+
+    # Guaranteed Height Safety Invariant (Never exceed rows under any split or resize)
+    if len(lines) > rows:
+        lines = lines[:rows]
 
     return "\n".join(lines)
 
