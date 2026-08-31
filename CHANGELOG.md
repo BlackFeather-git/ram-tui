@@ -5,6 +5,15 @@ All notable changes to `ram-tui` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-08-31
+
+### Fixed
+- **Pixel-Perfect Process Table Column Alignment**: Created `pad_plain_cells()` to guarantee exact terminal display-cell padding for process names and right-justified RSS strings to 9 characters, eliminating wobble/horizontal shifts across byte units (KB/MB/GB).
+- **Proportional Process Meter Coloring**: Process meters now color-code according to actual system RAM consumption (`<40%` green, `40-70%` yellow, `>70%` red) instead of falsely reporting critical red alarms for harmless top processes.
+- **80-Column Breakdown Spacing**: Budgeted the 6-column metrics grid (`USED`, `AVAILABLE`, `TOTAL`, `COMMIT`, `CACHED`, `SWAP`) to 75 columns, preventing `SWAP` descriptors from getting clipped on standard 80-column terminals.
+
+---
+
 ## [0.5.0] - 2026-08-31
 
 ### Added
