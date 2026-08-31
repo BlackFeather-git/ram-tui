@@ -1,6 +1,6 @@
 <div align="center">
 
-# ⚡ ram-tui
+# ram-tui
 
 *A lightweight, aesthetic, zero-dependency real-time terminal memory monitor for Linux, macOS & Windows.*
 
