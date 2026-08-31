@@ -35,30 +35,30 @@
 
 ## Installation
 
-### 🐧 Linux & 🍎 macOS (Quick Install)
+### Linux & macOS (Quick Install)
 ```bash
 curl -sSL https://raw.githubusercontent.com/BlackFeather-git/ram-tui/main/install.sh | bash
 ```
 
-### 🪟 Windows (PowerShell One-Liner)
+### Windows (PowerShell One-Liner)
 Run in PowerShell or Windows Terminal:
 ```powershell
 irm https://raw.githubusercontent.com/BlackFeather-git/ram-tui/main/install.ps1 | iex
 ```
 
-### 📦 Windows (Scoop)
+### Windows (Scoop)
 ```powershell
 scoop install https://raw.githubusercontent.com/BlackFeather-git/ram-tui/main/packaging/scoop/ram.json
 ```
 
-### 🐧 Arch Linux (AUR)
+### Arch Linux (AUR)
 ```bash
 yay -S ram-tui
 # or
 paru -S ram-tui
 ```
 
-### 🛠️ Manual Installation (Any OS)
+### Manual Installation (Any OS)
 Download the standalone `ram` file to any directory in your `PATH`:
 ```bash
 # Linux / macOS

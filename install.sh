@@ -28,7 +28,7 @@ for arg in "$@"; do
     esac
 done
 
-echo -e "\033[1;36m⚡ Installing ram-tui (branch: ${BRANCH})...\033[0m"
+echo -e "\033[1;36m==> Installing ram-tui (branch: ${BRANCH})...\033[0m"
 
 if [ "$DRY_RUN" = true ]; then
     echo -e "\033[1;33m[DRY-RUN] Target binary: ${TARGET}\033[0m"
@@ -46,7 +46,7 @@ fetch_file() {
     elif command -v wget >/dev/null 2>&1; then
         wget -qO "$dest" "$url"
     else
-        echo "❌ Error: curl or wget is required for installation." >&2
+        echo "Error: curl or wget is required for installation." >&2
         return 1
     fi
 }
@@ -54,8 +54,8 @@ fetch_file() {
 # Check if existing installation should be overwritten
 if [ -f "${TARGET}" ] && [ "$FORCE" = false ]; then
     if [ -t 0 ]; then
-        echo -e "\033[1;33m⚠️  '${TARGET}' already exists.\033[0m"
-        read -rp "   Overwrite existing binary? [y/N] " response
+        echo -e "\033[1;33mWarning: '${TARGET}' already exists.\033[0m"
+        read -rp "Overwrite existing binary? [y/N] " response
         if [[ ! "$response" =~ ^[Yy]$ ]]; then
             echo "Installation cancelled."
             exit 0
@@ -73,18 +73,18 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-echo "📦 Downloading ram executable..."
+echo "-> Downloading ram executable..."
 fetch_file "${BASE_URL}/ram" "${TMP_BIN}"
 
 # Verify executable is non-empty
 if [ ! -s "${TMP_BIN}" ]; then
-    echo "❌ Error: Downloaded file is empty. Please check your network connection." >&2
+    echo "Error: Downloaded file is empty. Please check your network connection." >&2
     exit 1
 fi
 
 # Install executable with 0755 permissions
 install -m 0755 "${TMP_BIN}" "${TARGET}"
-echo -e "\033[1;32m✅ Installed executable to: ${TARGET}\033[0m"
+echo -e "\033[1;32m-> Installed executable to: ${TARGET}\033[0m"
 
 # 3. Install shell completions if directories exist or can be created
 # Bash
@@ -113,14 +113,14 @@ case ":${PATH}:" in
     *":${BIN_DIR}:"*) ;;
     *)
         echo ""
-        echo -e "\033[1;33m⚠️  Note: ${BIN_DIR} is not in your current PATH.\033[0m"
+        echo -e "\033[1;33mNotice: ${BIN_DIR} is not in your current PATH.\033[0m"
         echo "   To make 'ram' globally executable, add ${BIN_DIR} to your shell profile:"
-        echo "   • Bash:  echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc"
-        echo "   • Zsh:   echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.zshrc"
-        echo "   • Fish:  fish_add_path ~/.local/bin"
-        echo "   • POSIX: echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.profile"
+        echo "   - Bash:  echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc"
+        echo "   - Zsh:   echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.zshrc"
+        echo "   - Fish:  fish_add_path ~/.local/bin"
+        echo "   - POSIX: echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.profile"
         ;;
 esac
 
 echo ""
-echo -e "\033[1;32m🚀 Installation complete! Run 'ram' to launch.\033[0m"
+echo -e "\033[1;32mInstallation complete. Run 'ram' to launch.\033[0m"
