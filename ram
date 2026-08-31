@@ -111,7 +111,7 @@ def clamp_line_to_cols(line, max_cols):
 
 
 # ---------------------------------------------------------------------------
-# Windows Win32 FFI Prototypes (Explicit Pointer-Sized Types for x64/x86)
+# Windows Win32 FFI Prototypes & Structures (Module-level cached)
 # ---------------------------------------------------------------------------
 if SYSTEM_OS == "Windows":
     try:
@@ -152,6 +152,75 @@ if SYSTEM_OS == "Windows":
         # GlobalMemoryStatusEx(LPMEMORYSTATUSEX) -> BOOL
         k32.GlobalMemoryStatusEx.argtypes = [ctypes.c_void_p]
         k32.GlobalMemoryStatusEx.restype = ctypes.c_int
+
+        class MEMORYSTATUSEX(ctypes.Structure):
+            _fields_ = [
+                ("dwLength", ctypes.c_ulong),
+                ("dwMemoryLoad", ctypes.c_ulong),
+                ("ullTotalPhys", ctypes.c_ulonglong),
+                ("ullAvailPhys", ctypes.c_ulonglong),
+                ("ullTotalPageFile", ctypes.c_ulonglong),
+                ("ullAvailPageFile", ctypes.c_ulonglong),
+                ("ullTotalVirtual", ctypes.c_ulonglong),
+                ("ullAvailVirtual", ctypes.c_ulonglong),
+                ("sllAvailExtendedVirtual", ctypes.c_ulonglong),
+            ]
+
+        class PERFORMANCE_INFORMATION(ctypes.Structure):
+            _fields_ = [
+                ("cb", ctypes.c_ulong),
+                ("CommitTotal", ctypes.c_size_t),
+                ("CommitLimit", ctypes.c_size_t),
+                ("CommitPeak", ctypes.c_size_t),
+                ("PhysicalTotal", ctypes.c_size_t),
+                ("PhysicalAvailable", ctypes.c_size_t),
+                ("SystemCache", ctypes.c_size_t),
+                ("KernelTotal", ctypes.c_size_t),
+                ("KernelPaged", ctypes.c_size_t),
+                ("KernelNonpaged", ctypes.c_size_t),
+                ("PageSize", ctypes.c_size_t),
+                ("HandleCount", ctypes.c_ulong),
+                ("ProcessCount", ctypes.c_ulong),
+                ("ThreadCount", ctypes.c_ulong),
+            ]
+
+        class PROCESSENTRY32W(ctypes.Structure):
+            _fields_ = [
+                ("dwSize", ctypes.c_ulong),
+                ("cntUsage", ctypes.c_ulong),
+                ("th32ProcessID", ctypes.c_ulong),
+                ("th32DefaultHeapID", ctypes.c_void_p),
+                ("th32ModuleID", ctypes.c_ulong),
+                ("cntThreads", ctypes.c_ulong),
+                ("th32ParentProcessID", ctypes.c_ulong),
+                ("pcPriClassBase", ctypes.c_long),
+                ("dwFlags", ctypes.c_ulong),
+                ("szExeFile", ctypes.c_wchar * 260),
+            ]
+
+        class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
+            _fields_ = [
+                ("cb", ctypes.c_ulong),
+                ("PageFaultCount", ctypes.c_ulong),
+                ("PeakWorkingSetSize", ctypes.c_size_t),
+                ("WorkingSetSize", ctypes.c_size_t),
+                ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                ("PagefileUsage", ctypes.c_size_t),
+                ("PeakPagefileUsage", ctypes.c_size_t),
+            ]
+
+        psapi_perf = getattr(k32, "K32GetPerformanceInfo", None) or getattr(ctypes.windll.psapi, "GetPerformanceInfo", None)
+        if psapi_perf:
+            psapi_perf.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+            psapi_perf.restype = ctypes.c_int
+
+        psapi_mem = getattr(k32, "K32GetProcessMemoryInfo", None) or getattr(ctypes.windll.psapi, "GetProcessMemoryInfo", None)
+        if psapi_mem:
+            psapi_mem.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_ulong]
+            psapi_mem.restype = ctypes.c_int
     except Exception:
         pass
 
@@ -516,15 +585,19 @@ class TerminalManager:
                 deadline = time.monotonic() + timeout
                 keys = []
                 while True:
-                    if msvcrt.kbhit():
+                    while msvcrt.kbhit():
                         ch = msvcrt.getch()
+                        # Consume secondary scan codes for extended / arrow keys
+                        if ch in (b"\x00", b"\xe0") and msvcrt.kbhit():
+                            msvcrt.getch()
+                            continue
                         try:
                             keys.append(ch.decode("utf-8", errors="ignore"))
                         except Exception:
                             pass
                     if keys or time.monotonic() >= deadline:
                         break
-                    time.sleep(0.005)
+                    time.sleep(0.001)
                 return keys
             except Exception:
                 if timeout > 0:
@@ -624,40 +697,9 @@ def get_meminfo_linux():
 
 def get_meminfo_windows():
     try:
-        class MEMORYSTATUSEX(ctypes.Structure):
-            _fields_ = [
-                ("dwLength", ctypes.c_ulong),
-                ("dwMemoryLoad", ctypes.c_ulong),
-                ("ullTotalPhys", ctypes.c_ulonglong),
-                ("ullAvailPhys", ctypes.c_ulonglong),
-                ("ullTotalPageFile", ctypes.c_ulonglong),
-                ("ullAvailPageFile", ctypes.c_ulonglong),
-                ("ullTotalVirtual", ctypes.c_ulonglong),
-                ("ullAvailVirtual", ctypes.c_ulonglong),
-                ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
-            ]
-
-        class PERFORMANCE_INFORMATION(ctypes.Structure):
-            _fields_ = [
-                ("cb", ctypes.c_ulong),
-                ("CommitTotal", ctypes.c_size_t),
-                ("CommitLimit", ctypes.c_size_t),
-                ("CommitPeak", ctypes.c_size_t),
-                ("PhysicalTotal", ctypes.c_size_t),
-                ("PhysicalAvailable", ctypes.c_size_t),
-                ("SystemCache", ctypes.c_size_t),
-                ("KernelTotal", ctypes.c_size_t),
-                ("KernelPaged", ctypes.c_size_t),
-                ("KernelNonpaged", ctypes.c_size_t),
-                ("PageSize", ctypes.c_size_t),
-                ("HandleCount", ctypes.c_ulong),
-                ("ProcessCount", ctypes.c_ulong),
-                ("ThreadCount", ctypes.c_ulong),
-            ]
-
         stat = MEMORYSTATUSEX()
         stat.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
-        if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat)):
+        if not k32.GlobalMemoryStatusEx(ctypes.byref(stat)):
             return {"total": 0, "available": 0, "used": 0, "commit_as": None, "commit_limit": None, "cached": None, "swap_used": None, "swap_total": 0, "swap_desc": "unknown", "valid": False}
 
         total = max(0, int(stat.ullTotalPhys))
@@ -668,13 +710,10 @@ def get_meminfo_windows():
         commit_limit = None
         cached = None
         try:
-            perf = PERFORMANCE_INFORMATION()
-            perf.cb = ctypes.sizeof(PERFORMANCE_INFORMATION)
-            psapi_func = getattr(ctypes.windll.kernel32, "K32GetPerformanceInfo", None) or getattr(ctypes.windll.psapi, "GetPerformanceInfo", None)
-            if psapi_func:
-                psapi_func.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
-                psapi_func.restype = ctypes.c_int
-                if psapi_func(ctypes.byref(perf), perf.cb):
+            if psapi_perf:
+                perf = PERFORMANCE_INFORMATION()
+                perf.cb = ctypes.sizeof(PERFORMANCE_INFORMATION)
+                if psapi_perf(ctypes.byref(perf), perf.cb):
                     page_size = perf.PageSize or 4096
                     commit_as = max(0, int(perf.CommitTotal * page_size))
                     commit_limit = max(0, int(perf.CommitLimit * page_size))
@@ -865,43 +904,12 @@ def get_processes_linux(group_by_name=True, limit=8):
 
 
 def get_processes_windows(group_by_name=True, limit=8):
-    """Enumerates Windows processes with guaranteed try/finally snapshot handle cleanup (C-001/C-004)."""
+    """Enumerates Windows processes with module-level ctypes caching and guarded handle cleanup."""
     procs = {}
+    if SYSTEM_OS != "Windows":
+        return []
+
     try:
-        class PROCESSENTRY32W(ctypes.Structure):
-            _fields_ = [
-                ("dwSize", ctypes.c_ulong),
-                ("cntUsage", ctypes.c_ulong),
-                ("th32ProcessID", ctypes.c_ulong),
-                ("th32DefaultHeapID", ctypes.c_void_p),
-                ("th32ModuleID", ctypes.c_ulong),
-                ("cntThreads", ctypes.c_ulong),
-                ("th32ParentProcessID", ctypes.c_ulong),
-                ("pcPriClassBase", ctypes.c_long),
-                ("dwFlags", ctypes.c_ulong),
-                ("szExeFile", ctypes.c_wchar * 260),
-            ]
-
-        class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
-            _fields_ = [
-                ("cb", ctypes.c_ulong),
-                ("PageFaultCount", ctypes.c_ulong),
-                ("PeakWorkingSetSize", ctypes.c_size_t),
-                ("WorkingSetSize", ctypes.c_size_t),
-                ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
-                ("QuotaPagedPoolUsage", ctypes.c_size_t),
-                ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
-                ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
-                ("PagefileUsage", ctypes.c_size_t),
-                ("PeakPagefileUsage", ctypes.c_size_t),
-            ]
-
-        k32 = ctypes.windll.kernel32
-        psapi_mem = getattr(k32, "K32GetProcessMemoryInfo", None) or getattr(ctypes.windll.psapi, "GetProcessMemoryInfo", None)
-        if psapi_mem:
-            psapi_mem.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_ulong]
-            psapi_mem.restype = ctypes.c_int
-
         INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
         h_snap = k32.CreateToolhelp32Snapshot(0x00000002, 0)
         if not h_snap or h_snap == INVALID_HANDLE_VALUE or h_snap == -1:
@@ -910,17 +918,17 @@ def get_processes_windows(group_by_name=True, limit=8):
         try:
             pe = PROCESSENTRY32W()
             pe.dwSize = ctypes.sizeof(PROCESSENTRY32W)
+            pmc = PROCESS_MEMORY_COUNTERS()
+            pmc.cb = ctypes.sizeof(PROCESS_MEMORY_COUNTERS)
 
             if k32.Process32FirstW(h_snap, ctypes.byref(pe)):
                 while True:
                     pid = pe.th32ProcessID
-                    name = sanitize_text(pe.szExeFile)
-                    if pid > 0:
+                    if pid > 4:  # Skip System Idle Process (0) and System (4)
+                        name = sanitize_text(pe.szExeFile)
                         h_proc = k32.OpenProcess(0x0400 | 0x0010, False, pid)
                         if h_proc and h_proc != INVALID_HANDLE_VALUE:
                             try:
-                                pmc = PROCESS_MEMORY_COUNTERS()
-                                pmc.cb = ctypes.sizeof(PROCESS_MEMORY_COUNTERS)
                                 if psapi_mem and psapi_mem(h_proc, ctypes.byref(pmc), pmc.cb):
                                     rss_bytes = pmc.WorkingSetSize
                                     if rss_bytes > 0:
@@ -998,7 +1006,7 @@ def get_processes(group_by_name=True, limit=8):
 
 UPDATE_API_URL = "https://api.github.com/repos/BlackFeather-git/ram-tui/releases/latest"
 UPDATE_RAW_BASE_URL = "https://raw.githubusercontent.com/BlackFeather-git/ram-tui"
-UPDATE_DEFAULT_INTERVAL = 43200
+UPDATE_DEFAULT_INTERVAL = 60
 UPDATE_MAX_SOURCE_SIZE = 2 * 1024 * 1024
 UPDATE_VERSION_RE = re.compile(
     r"^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
@@ -1742,30 +1750,61 @@ def main():
 
             # 2. Responsive non-blocking select wait for user keystrokes
             keys = term.get_keys(timeout=refresh_ms / 1000.0)
+            re_render_needed = False
             for ch in keys:
                 if ch in ("q", "Q", "\x03"):
                     cleanup_and_exit()
                 elif ch in ("p", "P", " "):
                     paused = not paused
+                    re_render_needed = True
                 elif ch in ("+", "="):
                     refresh_ms = max(20, refresh_ms - 25)
+                    re_render_needed = True
                 elif ch in ("-", "_"):
                     refresh_ms = min(2000, refresh_ms + 50)
+                    re_render_needed = True
                 elif ch == "1":
                     group_procs = True
+                    re_render_needed = True
                 elif ch == "2":
                     group_procs = False
+                    re_render_needed = True
                 elif ch in ("t", "T"):
                     idx = (THEME_NAMES.index(current_theme) + 1) % len(THEME_NAMES)
                     current_theme = THEME_NAMES[idx]
+                    re_render_needed = True
                 elif ch in ("s", "S"):
                     idx = (GRAPH_SYMBOLS.index(current_symbol) + 1) % len(GRAPH_SYMBOLS)
                     current_symbol = GRAPH_SYMBOLS[idx]
+                    re_render_needed = True
                 elif ch in ("m", "M"):
                     idx = (CYCLING_MODES.index(current_mode) + 1) % len(CYCLING_MODES) if current_mode in CYCLING_MODES else 0
                     current_mode = CYCLING_MODES[idx]
+                    re_render_needed = True
                 elif ch in ("h", "H", "?"):
                     show_help = not show_help
+                    re_render_needed = True
+
+            if re_render_needed:
+                mem = get_meminfo()
+                procs = get_processes(group_by_name=group_procs, limit=proc_count) if current_mode == "hero" else []
+                update_notice = update_manager.get_notification()
+                output = render_snapshot(
+                    mem, procs,
+                    group_procs=group_procs,
+                    paused=paused,
+                    mode=current_mode,
+                    theme=current_theme,
+                    symbol=current_symbol,
+                    enable_color=color_enabled,
+                    show_help=show_help,
+                    update_notice=update_notice
+                )
+                try:
+                    sys.stdout.write(f"\033[H\033[2J{output}")
+                    sys.stdout.flush()
+                except BrokenPipeError:
+                    break
 
     except KeyboardInterrupt:
         pass
