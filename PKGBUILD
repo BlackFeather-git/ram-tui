@@ -1,6 +1,6 @@
 # Maintainer: Raven (BlackFeather) <https://github.com/BlackFeather-git>
 pkgname=ram-tui
-pkgver=0.5.1
+pkgver=0.5.2
 pkgrel=1
 pkgdesc="Lightweight, aesthetic, cross-platform real-time terminal memory monitor with zero dependencies"
 arch=('any')

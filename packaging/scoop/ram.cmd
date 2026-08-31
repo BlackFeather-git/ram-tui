@@ -1,2 +1,2 @@
 @echo off
-python "%~dp0..\ram" %*
+python "%~dp0..\..\ram" %*

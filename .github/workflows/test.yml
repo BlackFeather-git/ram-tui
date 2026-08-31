@@ -41,3 +41,19 @@ jobs:
         python ram --json | head -n 5
         python ram --json | grep -q '"memory"'
         python ram --mini --once | grep -q 'RAM'
+
+  packaging-validation:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Validate install.sh Dry-Run
+      run: bash install.sh --dry-run
+
+    - name: Validate Shell Completions Syntax
+      run: |
+        bash -n completions/ram.bash
+
+    - name: Validate Scoop Manifest JSON
+      run: python3 -c 'import json; json.load(open("packaging/scoop/ram.json"))'
+

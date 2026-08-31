@@ -5,6 +5,16 @@ All notable changes to `ram-tui` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] - 2026-08-31
+
+### Fixed
+- **Windows Scoop Launcher Shims**: Corrected relative executable path in `packaging/scoop/ram.cmd` and `packaging/scoop/ram.ps1` (`..\..\ram`) ensuring native CMD and PowerShell launches succeed from Scoop `bin/`.
+- **Installer Portability & Safety**: Added unified `fetch_file()` helper supporting both `curl` and `wget` for the binary and all completion scripts, plus interactive prompt protection when replacing existing installations without `--force`.
+- **Debian Maintainer Format**: Formatted maintainer contact in `packaging/debian/control` with standard RFC-822 compliant email address.
+- **CI Packaging Validation**: Added automated GitHub Actions CI step validating installer dry-run, completion script syntax, and Scoop JSON manifest structure.
+
+---
+
 ## [0.5.1] - 2026-08-31
 
 ### Fixed

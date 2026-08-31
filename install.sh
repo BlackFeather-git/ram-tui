@@ -37,6 +37,32 @@ if [ "$DRY_RUN" = true ]; then
     exit 0
 fi
 
+# Helper function to download files using curl or wget
+fetch_file() {
+    local url="$1"
+    local dest="$2"
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL "$url" -o "$dest"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -qO "$dest" "$url"
+    else
+        echo "❌ Error: curl or wget is required for installation." >&2
+        return 1
+    fi
+}
+
+# Check if existing installation should be overwritten
+if [ -f "${TARGET}" ] && [ "$FORCE" = false ]; then
+    if [ -t 0 ]; then
+        echo -e "\033[1;33m⚠️  '${TARGET}' already exists.\033[0m"
+        read -rp "   Overwrite existing binary? [y/N] " response
+        if [[ ! "$response" =~ ^[Yy]$ ]]; then
+            echo "Installation cancelled."
+            exit 0
+        fi
+    fi
+fi
+
 # 1. Ensure target binary directory exists
 mkdir -p "${BIN_DIR}"
 
@@ -48,14 +74,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 echo "📦 Downloading ram executable..."
-if command -v curl >/dev/null 2>&1; then
-    curl -fsSL "${BASE_URL}/ram" -o "${TMP_BIN}"
-elif command -v wget >/dev/null 2>&1; then
-    wget -qO "${TMP_BIN}" "${BASE_URL}/ram"
-else
-    echo "❌ Error: curl or wget is required for installation." >&2
-    exit 1
-fi
+fetch_file "${BASE_URL}/ram" "${TMP_BIN}"
 
 # Verify executable is non-empty
 if [ ! -s "${TMP_BIN}" ]; then
@@ -72,21 +91,21 @@ echo -e "\033[1;32m✅ Installed executable to: ${TARGET}\033[0m"
 BASH_COMP_DIR="${HOME}/.local/share/bash-completion/completions"
 mkdir -p "${BASH_COMP_DIR}" 2>/dev/null || true
 if [ -d "${BASH_COMP_DIR}" ]; then
-    curl -fsSL "${BASE_URL}/completions/ram.bash" -o "${BASH_COMP_DIR}/ram" 2>/dev/null || true
+    fetch_file "${BASE_URL}/completions/ram.bash" "${BASH_COMP_DIR}/ram" 2>/dev/null || true
 fi
 
 # Zsh
 ZSH_COMP_DIR="${HOME}/.local/share/zsh/site-functions"
 mkdir -p "${ZSH_COMP_DIR}" 2>/dev/null || true
 if [ -d "${ZSH_COMP_DIR}" ]; then
-    curl -fsSL "${BASE_URL}/completions/_ram" -o "${ZSH_COMP_DIR}/_ram" 2>/dev/null || true
+    fetch_file "${BASE_URL}/completions/_ram" "${ZSH_COMP_DIR}/_ram" 2>/dev/null || true
 fi
 
 # Fish
 FISH_COMP_DIR="${HOME}/.config/fish/completions"
 mkdir -p "${FISH_COMP_DIR}" 2>/dev/null || true
 if [ -d "${FISH_COMP_DIR}" ]; then
-    curl -fsSL "${BASE_URL}/completions/ram.fish" -o "${FISH_COMP_DIR}/ram.fish" 2>/dev/null || true
+    fetch_file "${BASE_URL}/completions/ram.fish" "${FISH_COMP_DIR}/ram.fish" 2>/dev/null || true
 fi
 
 # 4. Comprehensive non-destructive PATH diagnostics

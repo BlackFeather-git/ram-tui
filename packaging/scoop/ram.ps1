@@ -1,1 +1,1 @@
-& python "$PSScriptRoot\..\ram" $args
+& python "$PSScriptRoot\..\..\ram" $args
