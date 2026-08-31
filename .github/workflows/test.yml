@@ -32,7 +32,8 @@ jobs:
         python-version: ${{ matrix.python-version }}
 
     - name: Show Runtime Platform
-      run: python -c "import platform, sys, os; print(f'Platform: {platform.platform()} | Python: {sys.version} | os.name: {os.name}')"
+      run: |
+        python -c "import platform, sys, os; print(platform.platform()); print(sys.version); print(os.name)"
         
     - name: Run Unit Tests
       run: python -m unittest discover tests
