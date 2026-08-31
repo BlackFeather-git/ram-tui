@@ -15,24 +15,25 @@
 
 ---
 
-## ✨ Features
+## Features
 
-- 🏎️ **Ultra-Fast & Kernel-Direct:** Sub-millisecond reads from native kernel interfaces (`/proc`, `sysctl`/`vm_stat`, Win32 API) with zero subshell overhead.
-- 📦 **Zero External Dependencies:** Built entirely with Python's standard library (`argparse`, `ctypes`, `subprocess`, `heapq`). No `pip`, no wheels, no external packages.
-- 🎨 **Built-in Theme Engine:** Beautiful 24-bit TrueColor palettes matching popular ricing themes (**Catppuccin**, **Nord**, **Tokyo Night**, **Dracula**, **Gruvbox**, **Cyberpunk**, and **Monochrome**).
-- 🎛️ **Multiple Display Modes:**
-  - **Hero (Default):** Full visual dashboard with memory stats and top processes.
-  - **Compact (`--compact`):** Memory meters only, omitting process lists for small windows.
-  - **Mini (`--mini`):** Ultra-minimal usage bar and percentage for tiny terminal splits.
-  - **Tiny (`--tiny`):** Single-line raw text for **Waybar**, **Polybar**, and **tmux** status bars.
-- 📊 **Smart Process Aggregation:** Automatically groups multi-process instances (e.g. `brave (21)`, `kitty`) by resident set size (RSS) with $O(N \log K)$ bounded extraction.
-- 🔒 **Starttime-Keyed PID Cache:** Keyed by documented field 22 starttime, completely eliminating PID-reuse race conditions.
-- 🤖 **Machine-Readable JSON:** Full `--json` export mode for scripting, pipelines, and alerting.
-- 🛡️ **Terminal-Safe:** Complete stripping of ANSI escape sequences, control codes, and Unicode directional overrides.
+- **Kernel-Direct & Zero Subshell Overhead:** Sub-millisecond direct reads from native kernel interfaces (`/proc` on Linux, `sysctl`/`vm_stat` on macOS, Win32 PSAPI on Windows).
+- **Zero External Dependencies:** Standard library only (`argparse`, `ctypes`, `subprocess`, `heapq`). No `pip`, no wheels, zero setup friction.
+- **Alternate Screen Buffer (`\033[?1049h`):** Dedicated terminal buffer prevents scrollback pollution and history corruption in GPU terminals (Kitty, Alacritty, WezTerm).
+- **Sub-Character Smooth Gauges:** High-resolution fractional block tracks (`█▉▊▋▌▍▎▏`) and Braille tracks (`⣿⡇`).
+- **Built-in Theme Engine:** 13 24-bit TrueColor palettes matching community ricing standards.
+- **Multi-Display Modes:**
+  - `hero` (Default): Full interactive dashboard with live memory meters and top processes.
+  - `--compact`: Memory meters and breakdown only.
+  - `--mini`: Single usage bar and percentage.
+  - `--tiny`: Plain text string for **Waybar**, **Polybar**, and **tmux** status bars.
+- **Smart Process Aggregation:** Groups multi-instance processes (e.g. `brave (21)`, `kitty`) with $O(N \log K)$ bounded extraction.
+- **Starttime-Keyed PID Cache:** Documented field 22 starttime keying isolates PID-reuse races.
+- **Machine-Readable JSON:** Full `--json` export mode for scripting and monitoring pipelines.
 
 ---
 
-## 🚀 Quick Install
+## Installation
 
 ### One-Line Script (Linux / macOS)
 ```bash
@@ -52,11 +53,12 @@ chmod +x ~/.local/bin/ram
 
 ---
 
-## 🎮 Interactive Hotkeys
+## Interactive Hotkeys
 
 While running interactively, press:
 
 | Key | Action |
+|:---|:---|
 | `q` / `Ctrl+C` | Quit |
 | `Space` / `p` | Pause / Resume real-time updates |
 | `t` / `T` | Cycle color theme live (**Dracula**, **Catppuccin**, **Nord**, **Tokyo Night**, etc.) |
@@ -70,7 +72,7 @@ While running interactively, press:
 
 ---
 
-## 💻 CLI Usage & Options
+## CLI Usage
 
 ```bash
 # Launch interactive monitor with Dracula theme & Braille symbols
@@ -100,12 +102,12 @@ ram -r 250 -n 12
 
 ---
 
-## 🎨 Color Themes
+## Color Themes
 
 Choose your aesthetic with `--theme <name>`:
 
-| Theme | Preview Description |
-|---|---|
+| Theme | Description |
+|:---|:---|
 | `default` | Dynamic gradient (Green <60%, Yellow <85%, Red $\ge$ 85%) |
 | `dracula` | Official Dracula Vampire (Purple, Pink, Cyan, Red) |
 | `catppuccin` | Catppuccin Mocha (Mauve, Sapphire, Teal, Peach) |
@@ -122,7 +124,7 @@ Choose your aesthetic with `--theme <name>`:
 
 ---
 
-## 🧪 Testing
+## Testing
 
 Run the automated test suite locally:
 
@@ -132,6 +134,6 @@ python3 -m unittest discover tests
 
 ---
 
-## 📜 License
+## License
 
 MIT License © 2026 Raven (BlackFeather) — See [LICENSE](LICENSE) for details.
