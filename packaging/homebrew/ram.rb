@@ -1,7 +1,7 @@
 class Ram < Formula
   desc "Lightweight, aesthetic zero-dependency real-time terminal memory monitor"
   homepage "https://github.com/BlackFeather-git/ram-tui"
-  url "https://github.com/BlackFeather-git/ram-tui/archive/v0.5.3.tar.gz"
+  url "https://github.com/BlackFeather-git/ram-tui/archive/v0.6.0.tar.gz"
   sha256 "REPLACE_WITH_RELEASE_SHA256"
   license "MIT"
 

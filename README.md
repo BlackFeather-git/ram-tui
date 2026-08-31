@@ -279,7 +279,7 @@ ram --json --once | jq '.memory'
 ```json
 {
   "timestamp": "2026-08-31T21:55:00.123456",
-  "version": "0.6.0-rc.1",
+  "version": "0.6.0",
   "system": {
     "os": "Linux",
     "hostname": "shadow",
