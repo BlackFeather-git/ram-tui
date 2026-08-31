@@ -1,167 +1,129 @@
-# ram-tui
+<div align="center">
 
-> *"Small enough to understand. Accurate enough to trust. Fast enough to leave running."*  
-> *"I made this because I wanted it and it is heavily vibe coded! If it is useful for you please feel free to use it however you want."*
+# ⚡ ram-tui
 
-A clean, real-time memory monitor for your terminal.
+*A lightweight, aesthetic, zero-dependency real-time terminal memory monitor for Linux, macOS & Windows.*
 
-Most system monitors are either bloated full-screen dashboards or bare-bones CLI outputs without context. `ram-tui` gives you a fast, zero-dependency TUI with dynamic usage bars, ZRAM detection, and aggregated process rankings across Linux, macOS, and Windows.
+[![CI](https://github.com/BlackFeather-git/ram-tui/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/BlackFeather-git/ram-tui/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.6+](https://img.shields.io/badge/Python-3.6+-3776AB.svg?logo=python&logoColor=white)](https://www.python.org)
+[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-brightgreen.svg)]()
 
-Single file. Standard library only. No installation headaches.
+> *"Small enough to understand. Accurate enough to trust. Fast enough to leave running."*
+
+</div>
 
 ---
 
-## Preview
+## ✨ Features
 
-```text
-RAM USAGE — my-laptop  Sun 21:47:21
-[██████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 13.9%
+- 🏎️ **Ultra-Fast & Kernel-Direct:** Sub-millisecond reads from native kernel interfaces (`/proc`, `sysctl`/`vm_stat`, Win32 API) with zero subshell overhead.
+- 📦 **Zero External Dependencies:** Built entirely with Python's standard library (`argparse`, `ctypes`, `subprocess`, `heapq`). No `pip`, no wheels, no external packages.
+- 🎨 **Built-in Theme Engine:** Beautiful 24-bit TrueColor palettes matching popular ricing themes (**Catppuccin**, **Nord**, **Tokyo Night**, **Dracula**, **Gruvbox**, **Cyberpunk**, and **Monochrome**).
+- 🎛️ **Multiple Display Modes:**
+  - **Hero (Default):** Full visual dashboard with memory stats and top processes.
+  - **Compact (`--compact`):** Memory meters only, omitting process lists for small windows.
+  - **Mini (`--mini`):** Ultra-minimal usage bar and percentage for tiny terminal splits.
+  - **Tiny (`--tiny`):** Single-line raw text for **Waybar**, **Polybar**, and **tmux** status bars.
+- 📊 **Smart Process Aggregation:** Automatically groups multi-process instances (e.g. `brave (21)`, `kitty`) by resident set size (RSS) with $O(N \log K)$ bounded extraction.
+- 🔒 **Starttime-Keyed PID Cache:** Keyed by documented field 22 starttime, completely eliminating PID-reuse race conditions.
+- 🤖 **Machine-Readable JSON:** Full `--json` export mode for scripting, pipelines, and alerting.
+- 🛡️ **Terminal-Safe:** Complete stripping of ANSI escape sequences, control codes, and Unicode directional overrides.
 
-Used    4.31 GB    Available  26.70 GB   Total   31.01 GB
-Commit  9.18 GB / 46.51 GB  (20% of commit limit)
-Cached  8.43 GB    (cache + reclaimable estimate)
-Swap    1.55 MB / 31.01 GB   (zram swap)
+---
 
-TOP 8 PROCESSES BY RESIDENT SET
-brave (12)             2.1 GB  ████████████████  6.7%
-gnome-shell          657.2 MB  █████░░░░░░░░░░░  2.1%
-code (6)             384.6 MB  ███░░░░░░░░░░░░░  1.2%
+## 🚀 Quick Install
 
-These 8 account for  3.79 GB (12% of installed RAM)
+### One-Line Script (Linux / macOS)
+```bash
+curl -sSL https://raw.githubusercontent.com/BlackFeather-git/ram-tui/main/install.sh | bash
 ```
 
-> **Note:** Process RSS measures resident memory pages, not strictly exclusive physical RAM. Shared libraries may cause the sum of process RSS values to differ from total system memory usage.
-
-## Features
-
-- **Zero dependencies**: Pure Python 3.6+ standard library.
-- **Cross-platform**: Native `/proc` parsing on Linux, `sysctl`/`vm_stat` on macOS, and Win32 APIs via `ctypes` on Windows (`GetPerformanceInfo` & Tool Help API).
-- **Accurate memory contracts**: Platform-native metrics with honest semantics (see [AUDIT.md](AUDIT.md)).
-- **Real-time & smooth**: Monotonic deadline scheduler (default 100ms) with zero timing drift.
-- **PID-reuse safe**: Starttime-keyed cache on Linux prevents stale process names on rapid PID reuse.
-- **Process grouping**: Automatically groups multi-process apps (e.g. `brave (12)`) or displays individual PIDs with `1`/`2` hotkeys.
-- **Sanitized rendering**: Strips terminal control codes and Unicode bidi overrides to prevent ANSI injection.
-- **Automation ready**: Output one-time snapshots with `--once` or machine-readable JSON with `--json`.
-
-## Supported Platforms
-
-| Platform | System Memory Source | Process Inspection | Notes |
-|---|---|---|---|
-| **Linux** | `/proc/meminfo`, `/proc/swaps` | `/proc/<pid>/statm` | Native ZRAM detection & starttime-keyed PID cache. |
-| **macOS** | `vm_stat`, `sysctl` | `ps` | Native page-size calculation & regex swap extraction. Commit is marked N/A. |
-| **Windows** | `GlobalMemoryStatusEx`, `GetPerformanceInfo` | Tool Help + `GetProcessMemoryInfo` | Pure `ctypes` Win32 API calls (no `tasklist` subprocess overhead). |
-
-## Installation
-
-### Linux & macOS
-
+### Arch Linux (AUR)
 ```bash
-git clone https://github.com/BlackFeather-git/ram-tui.git
-cd ram-tui
+yay -S ram-tui
+```
 
-mkdir -p ~/.local/bin
-cp ram ~/.local/bin/ram
+### Manual Download
+```bash
+curl -sSL https://raw.githubusercontent.com/BlackFeather-git/ram-tui/main/ram -o ~/.local/bin/ram
 chmod +x ~/.local/bin/ram
 ```
-*(Make sure `~/.local/bin` is in your `$PATH`)*
 
-**System-wide:**
-```bash
-sudo cp ram /usr/local/bin/ram
-sudo chmod +x /usr/local/bin/ram
-```
+---
 
-### Windows (PowerShell / Command Prompt)
+## 🎮 Interactive Hotkeys
 
-```powershell
-git clone https://github.com/BlackFeather-git/ram-tui.git
-cd ram-tui
-python ram
-```
-
-## Usage
-
-**Interactive TUI:**
-```bash
-ram
-```
-
-**Single Snapshot:**
-```bash
-ram --once
-```
-
-**Show Individual PIDs:**
-```bash
-ram --no-group
-```
-
-**Faster 50ms Refresh:**
-```bash
-ram --rate 50
-```
-
-**Show Top 16 Processes:**
-```bash
-ram --count 16
-```
-
-**JSON Output:**
-```bash
-ram --json
-```
-
-## Hotkeys
+While running interactively, press:
 
 | Key | Action |
-|---|---|
+|:---|:---|
 | `q` / `Ctrl+C` | Quit |
-| `Space` / `p` | Pause / resume live updates |
-| `+` / `=` | Increase refresh rate (down to 20 ms) |
-| `-` / `_` | Decrease refresh rate (up to 2000 ms) |
-| `1` | Group processes by executable name |
+| `Space` / `p` | Pause / Resume real-time updates |
+| `t` / `T` | Cycle color theme live (**Catppuccin**, **Nord**, **Tokyo Night**, etc.) |
+| `m` / `M` | Cycle display mode live (**Hero** $\rightarrow$ **Compact** $\rightarrow$ **Mini**) |
+| `1` | Group processes by name (default) |
 | `2` | Show individual process PIDs |
+| `+` / `=` | Increase refresh rate (+25ms) |
+| `-` / `_` | Decrease refresh rate (-50ms) |
+| `h` / `?` | Toggle hotkey help footer |
 
-## JSON Mode
+---
 
-`--json` outputs a clean, machine-parseable JSON payload:
-
-```json
-{
-  "timestamp": "2026-08-31T00:15:00+05:30",
-  "hostname": "my-laptop",
-  "os": "Linux",
-  "version": "0.4.3",
-  "memory": {
-    "total": 33554432000,
-    "available": 28689039360,
-    "used": 4865392640,
-    "commit_as": 9634304000,
-    "commit_limit": 50331648000,
-    "cached": 9069694976,
-    "swap_used": 1638400,
-    "swap_total": 33554432000,
-    "swap_desc": "zram swap",
-    "valid": true
-  },
-  "top_processes": [
-    {
-      "name": "brave",
-      "rss": 2254857830,
-      "count": 12
-    }
-  ]
-}
-```
-
-## Tests
-
-Run the built-in deterministic test suite:
+## 💻 CLI Usage & Options
 
 ```bash
-python3 -m unittest tests/test_ram.py
+# Launch interactive monitor (100ms refresh, Catppuccin theme)
+ram --theme catppuccin
+
+# Compact mode (meters only) with Nord theme
+ram --compact --theme nord
+
+# Mini mode for small terminal splits
+ram --mini --theme cyberpunk
+
+# Single-line output for Waybar / tmux status bars
+ram --tiny --once
+
+# One-shot snapshot
+ram --once
+
+# Machine-readable JSON output
+ram --json
+
+# Custom refresh rate (250ms) and top 12 processes
+ram -r 250 -n 12
 ```
 
-## License
+---
 
-[MIT](LICENSE)
+## 🎨 Color Themes
+
+Choose your aesthetic with `--theme <name>`:
+
+| Theme | Preview Description |
+|---|---|
+| `default` | Dynamic gradient (Green <60%, Yellow <85%, Red $\ge$ 85%) |
+| `catppuccin` | Catppuccin Mocha (Mauve, Sapphire, Teal, Peach) |
+| `nord` | Arctic Frost blue and snow storm palette |
+| `tokyo-night` | Tokyo Night neon storm and magenta |
+| `dracula` | Dracula purple, pink, and cyan |
+| `gruvbox` | Gruvbox retro dark aqua and warm yellow |
+| `cyberpunk` | High-contrast neon pink, electric yellow, and bright cyan |
+| `monochrome` | Pure grayscale / ANSI-free (auto-used on `NO_COLOR`) |
+
+---
+
+## 🧪 Testing
+
+Run the automated test suite locally:
+
+```bash
+python3 -m unittest discover tests
+```
+
+---
+
+## 📜 License
+
+MIT License © 2026 Raven (BlackFeather) — See [LICENSE](LICENSE) for details.

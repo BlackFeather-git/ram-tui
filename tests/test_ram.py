@@ -95,6 +95,61 @@ Pages occupied by compressor:            100000.
             self.assertEqual(info["swap_total"], 2048 * 1024 * 1024)
 
 
+class ThemeAndModeTests(unittest.TestCase):
+    def setUp(self):
+        self.mem = {
+            "total": 32 * 1024**3,
+            "available": 24 * 1024**3,
+            "used": 8 * 1024**3,
+            "commit_as": 12 * 1024**3,
+            "commit_limit": 40 * 1024**3,
+            "cached": 6 * 1024**3,
+            "swap_used": 100 * 1024**2,
+            "swap_total": 16 * 1024**3,
+            "swap_desc": "zram swap",
+            "valid": True
+        }
+        self.procs = [{"name": "python", "rss": 2 * 1024**3, "count": 2, "pid": None}]
+
+    def test_theme_palettes_completeness(self):
+        required_themes = {"default", "catppuccin", "nord", "tokyo-night", "dracula", "gruvbox", "cyberpunk", "monochrome"}
+        self.assertTrue(required_themes.issubset(set(ram.THEME_PALETTES.keys())))
+
+    def test_display_modes_render(self):
+        hero = ram.render_snapshot(self.mem, self.procs, mode="hero")
+        self.assertIn("TOP 1 PROCESSES", hero)
+
+        compact = ram.render_snapshot(self.mem, self.procs, mode="compact")
+        self.assertNotIn("TOP 1 PROCESSES", compact)
+        self.assertIn("Used", compact)
+
+        mini = ram.render_snapshot(self.mem, self.procs, mode="mini")
+        self.assertIn("RAM", mini)
+        self.assertNotIn("TOP 1 PROCESSES", mini)
+
+        tiny = ram.render_snapshot(self.mem, self.procs, mode="tiny")
+        self.assertTrue(tiny.startswith("RAM:"))
+        self.assertNotIn("\n", tiny)
+
+    def test_cli_mode_flags_and_mutual_exclusion(self):
+        args = ram.parse_arguments(["--compact", "--theme", "catppuccin"])
+        self.assertTrue(args.compact)
+        self.assertEqual(args.theme, "catppuccin")
+
+        args = ram.parse_arguments(["--mini", "--theme", "nord"])
+        self.assertTrue(args.mini)
+        self.assertEqual(args.theme, "nord")
+
+        args = ram.parse_arguments(["--tiny"])
+        self.assertTrue(args.tiny)
+
+        with self.assertRaises(SystemExit):
+            ram.parse_arguments(["--compact", "--mini"])
+
+        with self.assertRaises(SystemExit):
+            ram.parse_arguments(["--theme", "invalid-theme"])
+
+
 class TerminalAndCliTests(unittest.TestCase):
     def test_cli_boundaries(self):
         args = ram.parse_arguments(["-r", "50", "-n", "10"])
