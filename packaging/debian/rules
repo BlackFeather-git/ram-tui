@@ -1,0 +1,10 @@
+#!/usr/bin/make -f
+%:
+	dh $@
+
+override_dh_auto_install:
+	install -Dm755 ram $(DESTDIR)/usr/bin/ram
+	install -Dm644 completions/ram.bash $(DESTDIR)/usr/share/bash-completion/completions/ram
+	install -Dm644 completions/_ram $(DESTDIR)/usr/share/zsh/vendor-completions/_ram
+	install -Dm644 completions/ram.fish $(DESTDIR)/usr/share/fish/vendor_completions.d/ram.fish
+	install -Dm644 README.md $(DESTDIR)/usr/share/doc/ram-tui/README.md

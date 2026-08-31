@@ -266,6 +266,20 @@ class TerminalAndCliTests(unittest.TestCase):
         self.assertIn("hostname", parsed)
         self.assertTrue(isinstance(parsed["top_processes"], list))
 
+    def test_broken_pipe_handling(self):
+        # Simulate downstream pipe closure (e.g. head -n 1)
+        proc = subprocess.Popen(
+            [sys.executable, os.path.join(ROOT, "ram"), "--json"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True
+        )
+        first_line = proc.stdout.readline()
+        proc.stdout.close()
+        proc.stderr.close()
+        proc.wait(timeout=2.0)
+        self.assertEqual(proc.returncode, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -5,6 +5,20 @@ All notable changes to `ram-tui` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0-beta.7] - 2026-08-31
+
+### Added
+- **Multi-Shell Static Completions**: Full static autocompletion scripts for **Bash** (`completions/ram.bash`), **Zsh** (`completions/_ram`), and **Fish** (`completions/ram.fish`) with theme descriptions and flag parsing.
+- **Cross-Platform Distribution Recipes**: Created official packaging manifests for **Homebrew** (`packaging/homebrew/ram.rb`), **Windows Scoop** (`packaging/scoop/ram.json`), and **Debian/Ubuntu** (`packaging/debian/`).
+- **Hardened Secure Installer**: Rewrote `install.sh` with `set -euo pipefail`, atomic `mktemp` downloads, non-destructive PATH diagnostics, and automated user-level shell completion setup.
+- **Enhanced Arch Linux `PKGBUILD`**: Added test suite validation via `check()`, `provides=('ram')`/`conflicts=('ram')`, and full multi-shell completion directory installs.
+
+### Fixed
+- **POSIX Pipe & EPIPE Lifecycle**: Protected `--once` and `--json` against `BrokenPipeError` when piped downstream into `head`, `grep`, or jq.
+- **CI Smoke Matrix**: Hardened `.github/workflows/test.yml` with automated Unix pipeline smoke tests and non-interactive degradation checks across Ubuntu, macOS, and Windows.
+
+---
+
 ## [0.5.0-beta.6] - 2026-08-31
 
 ### Fixed

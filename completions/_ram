@@ -1,0 +1,43 @@
+#compdef ram
+# Zsh completion for ram-tui
+
+_ram() {
+    local -a themes symbols
+
+    themes=(
+        'default:Dynamic adaptive gradient (Green/Yellow/Red)'
+        'dracula:Official Dracula Vampire (Purple, Pink, Cyan)'
+        'catppuccin:Catppuccin Mocha (Mauve, Sapphire, Peach)'
+        'nord:Arctic Frost Cyan (Nord8) & Snow Storm'
+        'tokyo-night:Tokyo Night neon storm cyan and magenta'
+        'gruvbox:Gruvbox retro dark aqua and warm orange'
+        'cyberpunk:High-contrast neon hot pink, yellow, cyan'
+        'rose-pine:Rosé Pine (Iris, Love, Foam, Gold)'
+        'everforest:Cozy Everforest (Forest Green, Sage)'
+        'kanagawa:Kanagawa Wave Blue, Sakura Pink, Fuji White'
+        'monokai:Monokai Pro (Magenta, Bright Green, Cyan)'
+        'solarized:Solarized Dark (Cyan, Blue, Warm Yellow)'
+        'monochrome:Pure grayscale / ANSI-free'
+    )
+
+    symbols=(
+        'block:Fractional smooth unicode block track (█)'
+        'braille:Retro 2-column silky braille track (⣿)'
+    )
+
+    _arguments \
+        '(-r --rate)'{-r,--rate}'[Refresh interval in milliseconds (20-2000)]:rate (ms):' \
+        '(-n --count)'{-n,--count}'[Number of top processes to display (1-10000)]:count:' \
+        '(-1 --once)'{-1,--once}'[Output single snapshot and exit]' \
+        '--json[Output machine-readable JSON snapshot and exit]' \
+        '--no-group[Show individual process PIDs instead of grouping]' \
+        '--compact[Compact mode: memory meters only, no process table]' \
+        '--mini[Mini mode: single usage bar and percentage only]' \
+        '--tiny[Tiny mode: single-line raw output for status bars]' \
+        '--theme[Color theme]:theme:_describe "theme" themes' \
+        '--symbol[Meter graph style]:symbol:_describe "symbol" symbols' \
+        '(-h --help)'{-h,--help}'[Show help and exit]' \
+        '(-v --version)'{-v,--version}'[Show version and exit]'
+}
+
+_ram "$@"

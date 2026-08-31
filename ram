@@ -23,7 +23,7 @@ import heapq
 import unicodedata
 from datetime import datetime
 
-__version__ = "0.5.0-beta.6"
+__version__ = "0.5.0-beta.7"
 SYSTEM_OS = platform.system()
 
 PAGE_SIZE = 4096
@@ -1181,25 +1181,42 @@ def main():
 
     # JSON Snapshot Mode
     if args.json:
-        mem = get_meminfo()
-        procs = get_processes(group_by_name=not args.no_group, limit=args.count)
-        payload = {
-            "timestamp": datetime.now().astimezone().isoformat(),
-            "hostname": sanitize_text(socket.gethostname()),
-            "os": SYSTEM_OS,
-            "version": __version__,
-            "memory": mem,
-            "top_processes": procs
-        }
-        print(json.dumps(payload, indent=2))
+        try:
+            mem = get_meminfo()
+            procs = get_processes(group_by_name=not args.no_group, limit=args.count)
+            payload = {
+                "timestamp": datetime.now().astimezone().isoformat(),
+                "hostname": sanitize_text(socket.gethostname()),
+                "os": SYSTEM_OS,
+                "version": __version__,
+                "memory": mem,
+                "top_processes": procs
+            }
+            sys.stdout.write(json.dumps(payload, indent=2) + "\n")
+            sys.stdout.flush()
+        except BrokenPipeError:
+            try:
+                sys.stdout.close()
+            except Exception:
+                pass
+            sys.exit(0)
         return
 
     # One-Shot Mode
     if args.once:
-        mem = get_meminfo()
-        procs = get_processes(group_by_name=not args.no_group, limit=args.count) if current_mode == "hero" else []
-        color_enabled = should_use_color(is_interactive=False)
-        print(render_snapshot(mem, procs, group_procs=not args.no_group, paused=False, mode=current_mode, theme=current_theme, symbol=current_symbol, enable_color=color_enabled))
+        try:
+            mem = get_meminfo()
+            procs = get_processes(group_by_name=not args.no_group, limit=args.count) if current_mode == "hero" else []
+            color_enabled = should_use_color(is_interactive=False)
+            output = render_snapshot(mem, procs, group_procs=not args.no_group, paused=False, mode=current_mode, theme=current_theme, symbol=current_symbol, enable_color=color_enabled)
+            sys.stdout.write(output + "\n")
+            sys.stdout.flush()
+        except BrokenPipeError:
+            try:
+                sys.stdout.close()
+            except Exception:
+                pass
+            sys.exit(0)
         return
 
     # Interactive TUI Mode

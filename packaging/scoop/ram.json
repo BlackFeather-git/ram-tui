@@ -1,0 +1,14 @@
+{
+  "version": "0.5.0-beta.7",
+  "description": "Lightweight, aesthetic zero-dependency real-time terminal memory monitor",
+  "homepage": "https://github.com/BlackFeather-git/ram-tui",
+  "license": "MIT",
+  "url": "https://github.com/BlackFeather-git/ram-tui/archive/v0.5.0-beta.7.zip",
+  "hash": "REPLACE_WITH_RELEASE_SHA256",
+  "bin": "ram",
+  "checkver": "github",
+  "autoupdate": {
+    "url": "https://github.com/BlackFeather-git/ram-tui/archive/v$version.zip"
+  },
+  "notes": "Zero-dependency. Runs natively on Python 3.6+ standard library."
+}
