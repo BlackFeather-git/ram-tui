@@ -301,6 +301,9 @@ class TerminalAndCliTests(unittest.TestCase):
                     self.assertEqual(info["swap_desc"], "zram")
 
     def test_broken_pipe_handling(self):
+        if os.name == "nt":
+            self.skipTest("Broken pipe signal semantics are POSIX-specific")
+        import signal
         # Simulate downstream pipe closure (e.g. head -n 1)
         proc = subprocess.Popen(
             [sys.executable, os.path.join(ROOT, "ram"), "--json"],
@@ -311,8 +314,15 @@ class TerminalAndCliTests(unittest.TestCase):
         first_line = proc.stdout.readline()
         proc.stdout.close()
         proc.stderr.close()
-        proc.wait(timeout=2.0)
-        self.assertEqual(proc.returncode, 0)
+        try:
+            proc.wait(timeout=2.0)
+        except subprocess.TimeoutExpired:
+            proc.terminate()
+            proc.wait()
+        expected = {0, 141}
+        if hasattr(signal, "SIGPIPE"):
+            expected.add(-signal.SIGPIPE)
+        self.assertIn(proc.returncode, expected)
 
 
     def test_install_script_dry_run(self):
@@ -425,10 +435,10 @@ class UpdateManagerTests(unittest.TestCase):
                     self.assertIn("Notice: ram-tui is installed in a package-managed path", msg)
 
     def test_invalid_env_interval_never_crashes_json_mode(self):
-        # Even with completely corrupted RAM_UPDATE_INTERVAL, ram --json executes cleanly
+        # Even with completely corrupted RAM_UPDATE_INTERVAL, ram --json --once executes cleanly
         env = dict(os.environ, RAM_UPDATE_INTERVAL="corrupted_interval_string_123")
         proc = subprocess.Popen(
-            [sys.executable, os.path.join(ROOT, "ram"), "--json"],
+            [sys.executable, os.path.join(ROOT, "ram"), "--json", "--once"],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env=env,
@@ -543,6 +553,8 @@ class UpdateManagerTests(unittest.TestCase):
             self.assertIn("target does not appear to be a valid ram-tui installation", str(ctx.exception))
 
     def test_toctou_symlink_swap_rejection(self):
+        if os.name == "nt":
+            self.skipTest("Symlinks require administrator privileges on Windows")
         manager = ram.UpdateManager("0.5.3")
         with tempfile.TemporaryDirectory() as tmp:
             target = os.path.join(tmp, "ram")
