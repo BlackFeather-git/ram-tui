@@ -823,8 +823,13 @@ def render_smooth_bar(ratio, width=32, pal=None):
     return f"{filled_part}{empty_part}"
 
 
+def visible_len(s):
+    """Printable width of a string, ignoring ANSI escape codes (for alignment math)."""
+    return len(ANSI_ESCAPE_RE.sub("", s))
+
+
 def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", theme="default", enable_color=True, show_help=False):
-    """Renders clean, airy, modern unboxed TUI dashboard across all display modes."""
+    """Renders a clean, breathable, modern dashboard across all display modes."""
     pal = get_palette(theme, enable_color)
     hostname = sanitize_text(socket.gethostname())
     now_str = datetime.now().strftime("%H:%M:%S")
@@ -853,33 +858,41 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
         total_str = format_bytes(total, precision=1)
         res = f"RAM: {used_str} / {total_str} ({used_pct:.1f}%)"
         if show_help:
-            res += f"\n{m}q:quit  p:pause  t:theme  m:mode{r}"
+            res += f"\n{m}q quit   p pause   t theme   m mode{r}"
         return res
 
     # 2. MINI MODE (Clean single-line meter)
     if mode == "mini":
-        bar_w = max(10, min(36, cols - 34))
+        bar_w = clamp(cols - 32, 10, 44)
         smooth_bar = render_smooth_bar(used / total if total > 0 else 0, width=bar_w, pal=pal)
         pct_color = g if used_pct < 60 else (w if used_pct < 85 else crit)
-        res = f"{h}{bold}RAM{r}  [{smooth_bar}]  {pct_color}{bold}{used_pct:>5.1f}%{r}  {t}{format_bytes(used, 1)}{r}{m}/{r}{t}{format_bytes(total, 1)}{r}"
+        res = f"{h}{bold}RAM{r}  {smooth_bar}  {pct_color}{bold}{used_pct:>5.1f}%{r}  {t}{format_bytes(used, 1)}{r}{m} / {r}{t}{format_bytes(total, 1)}{r}"
         if show_help:
-            res += f"\n{m}{dim}q:quit  p:pause  t:theme  m:mode  +/-:rate{r}"
+            res += f"\n{m}{dim}q quit   p pause   t theme   m mode   +/- rate{r}"
         return res
 
     # 3. HERO & COMPACT MODES
     lines = []
+    rule_w = clamp(cols, 24, 96)
+    rule = f"{m}{dim}{'─' * rule_w}{r}"
 
-    # Clean Header
-    state_str = f" {w}[PAUSED]{r}" if paused else ""
-    header = f"{h}{bold}RAM{r}  {t}{hostname}{r} {m}·{r} {m}{SYSTEM_OS} {platform.machine()}{r} {m}·{r} {a}{theme}{r}{state_str}  {m}{now_str}{r}"
-    lines.append(header)
+    state_str = f"  {w}{bold}paused{r}" if paused else ""
+    header_left = (
+        f"{h}{bold}RAM{r}  {m}·{r}  {t}{hostname}{r}  {m}·{r}  "
+        f"{m}{SYSTEM_OS} {platform.machine()}{r}  {m}·{r}  {a}{theme}{r}{state_str}"
+    )
+    clock = f"{m}{now_str}{r}"
+    gap = max(2, rule_w - visible_len(header_left) - visible_len(clock))
+    lines.append(f"{header_left}{' ' * gap}{clock}")
+    lines.append(rule)
     lines.append("")
 
-    # Main Hero Usage Bar
-    bar_width = max(12, min(42, cols - 32))
+    # Hero usage bar
+    bar_width = clamp(cols - 24, 16, 64)
     smooth_bar = render_smooth_bar(used / total if total > 0 else 0, width=bar_width, pal=pal)
     pct_color = g if used_pct < 60 else (w if used_pct < 85 else crit)
-    lines.append(f"[{smooth_bar}]  {pct_color}{bold}{used_pct:>5.1f}%{r}   {t}{format_bytes(used, 2)}{r} {m}/{r} {t}{format_bytes(total, 2)}{r}")
+    lines.append(smooth_bar)
+    lines.append(f"{pct_color}{bold}{used_pct:>5.1f}%{r}  {t}{bold}{format_bytes(used, 2)}{r}{m} used of {r}{t}{format_bytes(total, 2)}{r}")
     lines.append("")
 
     # Clean Unboxed Metrics Breakdown Grid
@@ -888,25 +901,38 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
     swap_str = f"{format_bytes(mem.get('swap_used') or 0, 1)} ({mem.get('swap_desc', '')})"
 
     if cols >= 68:
-        # 6-column single line grid on wide terminals
-        lines.append(f"{m}USED{r}          {m}AVAILABLE{r}     {m}TOTAL{r}         {m}COMMIT{r}              {m}CACHED{r}        {m}SWAP{r}")
-        lines.append(f"{g}{bold}{format_bytes(used, 2):<13}{r} {g}{bold}{format_bytes(available, 2):<16}{r} {t}{bold}{format_bytes(total, 2):<16}{r} {t}{commit_str:<20}{r} {t}{cached_str:<13}{r} {t}{swap_str}{r}")
+        # 6-column single-line grid on wide terminals
+        lines.append(f"{m}USED          AVAILABLE     TOTAL         COMMIT              CACHED        SWAP{r}")
+        lines.append(f"{g}{bold}{format_bytes(used, 2):<14}{r}{t}{bold}{format_bytes(available, 2):<14}{r}{t}{bold}{format_bytes(total, 2):<14}{r}{t}{commit_str:<20}{r}{t}{cached_str:<14}{r}{t}{swap_str}{r}")
+    elif cols >= 50:
+        # 3-column wrapped grid on medium terminals
+        lines.append(f"{m}USED          AVAILABLE     TOTAL{r}")
+        lines.append(f"{g}{bold}{format_bytes(used, 2):<14}{r}{t}{bold}{format_bytes(available, 2):<14}{r}{t}{bold}{format_bytes(total, 2):<14}{r}")
+        lines.append(f"{m}COMMIT              CACHED        SWAP{r}")
+        lines.append(f"{t}{commit_str:<20}{r}{t}{cached_str:<14}{r}{t}{swap_str}{r}")
     else:
-        # 3-column wrapped grid on narrow terminals
-        lines.append(f"{m}USED{r}          {m}AVAILABLE{r}     {m}TOTAL{r}")
-        lines.append(f"{g}{bold}{format_bytes(used, 2):<13}{r} {g}{bold}{format_bytes(available, 2):<16}{r} {t}{bold}{format_bytes(total, 2)}{r}")
-        lines.append(f"{m}COMMIT{r}        {m}CACHED{r}        {m}SWAP{r}")
-        lines.append(f"{t}{commit_str:<13}{r} {t}{cached_str:<16}{r} {t}{swap_str}{r}")
+        # Stacked single-column readout for very narrow panes (tmux splits, etc.)
+        for label, value, color in (
+            ("USED", format_bytes(used, 2), g),
+            ("AVAILABLE", format_bytes(available, 2), t),
+            ("TOTAL", format_bytes(total, 2), t),
+            ("COMMIT", commit_str, t),
+            ("CACHED", cached_str, t),
+            ("SWAP", swap_str, t),
+        ):
+            lines.append(f"{m}{label:<11}{r}{color}{bold}{value}{r}")
 
     # 4. PROCESS RANKING (Only in HERO mode)
     if mode == "hero" and procs:
+        lines.append("")
+        lines.append(rule)
         lines.append("")
         mode_label = "RESIDENT SET" if group_procs else "PID"
         lines.append(f"{m}PROCESS ({mode_label}){r}        {m}RSS{r}        {m}USAGE{r}                {m}SHARE{r}")
 
         max_p_rss = procs[0]["rss"] if procs else 1
-        name_width = max(10, min(22, cols - 48))
-        p_bar_w = max(6, min(20, cols - 46))
+        name_width = clamp(cols - 48, 10, 22)
+        p_bar_w = clamp(cols - 46, 6, 20)
 
         for p in procs:
             count_str = f" ({p['count']})" if p.get("count", 1) > 1 else ""
@@ -917,11 +943,12 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
             p_pct = percentage(p["rss"], total)
             p_bar = render_smooth_bar(p["rss"] / max_p_rss if max_p_rss > 0 else 0, width=p_bar_w, pal=pal)
 
-            lines.append(f"{t}{name_disp}{r}    {g}{rss_str}{r}    [{p_bar}]   {m}{p_pct:>4.1f}%{r}")
+            lines.append(f"{t}{name_disp}{r}   {g}{rss_str}{r}   {p_bar}   {m}{p_pct:>4.1f}%{r}")
 
-    # Minimalist Footer
+    # Quiet footer
     lines.append("")
-    lines.append(f"{m}{dim}q:quit  p:pause  t:theme  m:mode  1/2:group  +/-:rate{r}")
+    lines.append(rule)
+    lines.append(f"{m}{dim}q quit   p pause   t theme   m mode   1/2 group   +/- rate{r}")
 
     return "\n".join(lines)
 
