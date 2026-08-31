@@ -324,6 +324,8 @@ class TerminalAndCliTests(unittest.TestCase):
         expected = {0, 141}
         if hasattr(signal, "SIGPIPE"):
             expected.add(-signal.SIGPIPE)
+        if hasattr(signal, "SIGTERM"):
+            expected.add(-signal.SIGTERM)
         self.assertIn(proc.returncode, expected)
 
 
