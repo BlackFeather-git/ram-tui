@@ -619,10 +619,11 @@ class UpdateManagerTests(unittest.TestCase):
 
             # Simulate root execution (euid = 0) with a world-writable directory (mode 0777)
             os.chmod(tmp, 0o777)
-            with mock.patch("os.geteuid", return_value=0, create=True):
-                with self.assertRaises(PermissionError) as ctx:
-                    ram.UpdateManager._resolve_target(target_bin)
-                self.assertIn("refusing to update binary in insecure world-writable directory", str(ctx.exception))
+            with mock.patch("ram.SYSTEM_OS", "Linux"):
+                with mock.patch("os.geteuid", return_value=0, create=True):
+                    with self.assertRaises(PermissionError) as ctx:
+                        ram.UpdateManager._resolve_target(target_bin)
+                    self.assertIn("refusing to update binary in insecure world-writable directory", str(ctx.exception))
 
     def test_pid_reuse_lock_eviction(self):
         import time
@@ -635,11 +636,12 @@ class UpdateManagerTests(unittest.TestCase):
                 f.write(f"{os.getpid()} 1000.0 {time.time()}\n")
 
             manager = ram.UpdateManager("0.5.3", cache_path=cache_path)
-            with mock.patch("ram.get_linux_proc_starttime", return_value="99999"):
-                # Starttime mismatch detects PID reuse -> safely evicts stale lock
-                acquired = manager._acquire_process_lock()
-                self.assertIsNotNone(acquired)
-                manager._release_process_lock(acquired)
+            with mock.patch("ram.SYSTEM_OS", "Linux"):
+                with mock.patch("ram.get_linux_proc_starttime", return_value="99999"):
+                    # Starttime mismatch detects PID reuse -> safely evicts stale lock
+                    acquired = manager._acquire_process_lock()
+                    self.assertIsNotNone(acquired)
+                    manager._release_process_lock(acquired)
 
     def test_cli_update_flags(self):
         args = ram.parse_arguments(["--update", "--force"])
