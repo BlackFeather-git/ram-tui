@@ -117,15 +117,15 @@ class ThemeAndModeTests(unittest.TestCase):
 
     def test_display_modes_render(self):
         hero = ram.render_snapshot(self.mem, self.procs, mode="hero")
-        self.assertIn("TOP PROCESSES", hero)
+        self.assertIn("PROCESS", hero)
 
         compact = ram.render_snapshot(self.mem, self.procs, mode="compact")
-        self.assertNotIn("TOP PROCESSES", compact)
-        self.assertIn("Used", compact)
+        self.assertNotIn("PROCESS", compact)
+        self.assertIn("USED", compact)
 
         mini = ram.render_snapshot(self.mem, self.procs, mode="mini")
         self.assertIn("RAM", mini)
-        self.assertNotIn("TOP PROCESSES", mini)
+        self.assertNotIn("PROCESS", mini)
 
         tiny = ram.render_snapshot(self.mem, self.procs, mode="tiny")
         self.assertTrue(tiny.startswith("RAM:"))
@@ -177,8 +177,8 @@ class TerminalAndCliTests(unittest.TestCase):
         procs = [{"name": "super_long_process_name_for_testing", "rss": 2 * 1024**3, "count": 1, "pid": 123}]
         with mock.patch("shutil.get_terminal_size", return_value=os.terminal_size((40, 24))):
             rendered = ram.render_snapshot(mem, procs, group_procs=False, enable_color=False)
-            self.assertIn("RAM-TUI", rendered)
-            self.assertIn("Cached: N/A", rendered)
+            self.assertIn("RAM", rendered)
+            self.assertIn("USED", rendered)
 
     def test_terminal_manager_idempotent_restore(self):
         tm = ram.TerminalManager()
