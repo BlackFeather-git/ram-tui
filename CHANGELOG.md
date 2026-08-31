@@ -9,7 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **In-Place Self-Updater (`ram --update`)**: Added native self-update command that queries GitHub Releases, verifies download checksum and Python bytecode compilation, validates semantic version declarations, and atomically replaces the installed executable.
-- **Offline-First Background Update Checker**: Added non-blocking daemon thread check with configurable 12-hour default cache interval (`RAM_UPDATE_INTERVAL` supporting suffixes like `30m`, `1h`, `12h`), quiet footer update notifications, and `--no-update-check` suppression.
+- **Cryptographic SHA-256 Integrity Verification**: Validates downloaded source against official release SHA-256 checksums (`ram.sha256`), preventing corrupted or unauthorized file replacements.
+- **AST Semantic Source Validation**: Employs Python standard library `ast.parse()` to semantically verify module-level `__version__` declarations and `if __name__ == "__main__":` entry point blocks, preventing docstring spoofing.
+- **Offline-First Background Update Checker**: Added non-blocking daemon thread check with configurable 12-hour default cache interval (`RAM_UPDATE_INTERVAL` supporting suffixes like `30m`, `1h`, `12h`), bounded 64 KiB API size limit, quiet footer update notifications, and `--no-update-check` suppression.
+- **Inter-Process Lock Guard**: Prevents concurrent instances from issuing duplicate background update checks.
+- **Package Manager Safety & `--force` Flag**: Detects system-managed installs (`pacman`, `brew`, `scoop`, `apt`) and warns users to prevent package database desynchronization unless `--force` is passed.
 - **Update Inspection CLI (`ram --check-update`)**: Added instant version check command reporting update status without modifying the running installation.
 
 ---

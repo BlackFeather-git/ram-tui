@@ -37,6 +37,7 @@ _ram() {
         '--theme[Color theme]:theme:_describe "theme" themes' \
         '--symbol[Meter graph style]:symbol:_describe "symbol" symbols' \
         '--update[Update ram-tui to latest release in-place and exit]' \
+        '--force[Force in-place update even if installed via package manager]' \
         '--check-update[Check for updates and exit]' \
         '--no-update-check[Disable background update check]' \
         '(-h --help)'{-h,--help}'[Show help and exit]' \

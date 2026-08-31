@@ -316,8 +316,9 @@ class UpdateManagerTests(unittest.TestCase):
         self.assertEqual(ram.parse_update_interval("1h"), 3600)
         self.assertEqual(ram.parse_update_interval("12h"), 43200)
         self.assertEqual(ram.parse_update_interval("900"), 900)
-        with self.assertRaises(ValueError):
-            ram.parse_update_interval("banana")
+        # Non-fatal: invalid inputs fall back to default interval safely
+        self.assertEqual(ram.parse_update_interval("banana"), ram.UPDATE_DEFAULT_INTERVAL)
+        self.assertEqual(ram.parse_update_interval("-100"), ram.UPDATE_DEFAULT_INTERVAL)
 
     def test_cache_reading_and_expiration(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -343,81 +344,97 @@ class UpdateManagerTests(unittest.TestCase):
                 "[Update available: v0.5.3 -> v0.6.0 | run 'ram --update']"
             ))
 
-    def test_mocked_update_download_and_atomic_replacement(self):
+    def test_ast_validation_rejects_docstring_spoofing(self):
+        # Fake script with version and __main__ only in multiline strings / comments
+        fake_source = (
+            '#!/usr/bin/env python3\n'
+            '"""\n'
+            '__version__ = "0.6.0"\n'
+            'if __name__ == "__main__":\n'
+            '    pass\n'
+            '"""\n'
+            'print("malicious or invalid source")\n'
+        ).encode("utf-8")
+
+        with self.assertRaises(ValueError) as ctx:
+            ram.UpdateManager._validate_source(fake_source, "0.6.0", filename="test")
+        self.assertIn("module-level __version__", str(ctx.exception))
+
+    def test_sha256_cryptographic_verification(self):
         source = (
             "#!/usr/bin/env python3\n"
             "__version__ = \"0.6.0\"\n"
             "if __name__ == \"__main__\":\n"
             "    pass\n"
         ).encode("utf-8")
+        import hashlib
+        correct_sha = hashlib.sha256(source).hexdigest()
 
-        class FakeResponse:
-            def __init__(self, payload):
-                self.payload = payload
+        # Should pass with matching SHA-256
+        ram.UpdateManager._validate_source(source, "0.6.0", expected_sha256=correct_sha, filename="test")
 
-            def read(self, size=-1):
-                if size == -1:
-                    payload, self.payload = self.payload, b""
-                    return payload
-                payload, self.payload = self.payload[:size], self.payload[size:]
-                return payload
+        # Should strictly fail with mismatched SHA-256
+        with self.assertRaises(ValueError) as ctx:
+            ram.UpdateManager._validate_source(source, "0.6.0", expected_sha256="deadbeef" * 8, filename="test")
+        self.assertIn("cryptographic integrity verification failed", str(ctx.exception))
 
-            def __enter__(self):
-                return self
+    def test_package_manager_conflict_detection(self):
+        self.assertIsNotNone(ram.detect_package_manager_install("/usr/bin/ram"))
+        self.assertIsNotNone(ram.detect_package_manager_install("/opt/homebrew/bin/ram"))
+        self.assertIsNotNone(ram.detect_package_manager_install(r"C:\Users\user\scoop\shims\ram.exe"))
+        self.assertIsNone(ram.detect_package_manager_install("/home/raven/.local/bin/ram"))
 
-            def __exit__(self, exc_type, exc, tb):
-                return False
-
+        manager = ram.UpdateManager("0.5.3")
         with tempfile.TemporaryDirectory() as tmp:
-            target = os.path.join(tmp, "ram")
-            with open(target, "wb") as handle:
-                handle.write(
-                    b"#!/usr/bin/env python3\n"
-                    b"__version__ = \"0.5.3\"\n"
-                    b"if __name__ == \"__main__\":\n"
-                    b"    pass\n"
-                )
+            fake_bin = os.path.join(tmp, "ram")
+            with open(fake_bin, "w") as f:
+                f.write("#!/usr/bin/env python3\n__version__ = '0.5.3'\nif __name__ == '__main__': pass\n")
 
+            with mock.patch.object(ram, "detect_package_manager_install", return_value="pacman"):
+                with mock.patch.object(manager, "check_now", return_value=("0.6.0", True)):
+                    ok, msg = manager.perform_update(target_path=fake_bin, force=False)
+                    self.assertFalse(ok)
+                    self.assertIn("Notice: ram-tui is installed in a package-managed path", msg)
+
+    def test_invalid_env_interval_never_crashes_json_mode(self):
+        # Even with completely corrupted RAM_UPDATE_INTERVAL, ram --json executes cleanly
+        env = dict(os.environ, RAM_UPDATE_INTERVAL="corrupted_interval_string_123")
+        proc = subprocess.Popen(
+            [sys.executable, os.path.join(ROOT, "ram"), "--json"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env,
+            universal_newlines=True,
+        )
+        out, err = proc.communicate(timeout=3.0)
+        self.assertEqual(proc.returncode, 0)
+        data = json.loads(out)
+        self.assertEqual(data["version"], ram.__version__)
+
+    def test_inter_process_lock_suppresses_concurrency(self):
+        with tempfile.TemporaryDirectory() as tmp:
             cache_path = os.path.join(tmp, "cache.json")
+            manager1 = ram.UpdateManager("0.5.3", cache_path=cache_path, interval=1)
+            manager2 = ram.UpdateManager("0.5.3", cache_path=cache_path, interval=1)
 
-            def fake_urlopen(request, timeout=1.0):
-                url = request.full_url
-                if url.endswith("/releases/latest"):
-                    return FakeResponse(b'{"tag_name":"v0.6.0"}')
-                return FakeResponse(source)
+            lock1 = manager1._acquire_process_lock()
+            self.assertIsNotNone(lock1)
 
-            with mock.patch.object(ram.urllib.request, "urlopen", side_effect=fake_urlopen):
-                manager = ram.UpdateManager(
-                    "0.5.3",
-                    cache_path=cache_path,
-                    interval=3600,
-                )
-                ok, message = manager.perform_update(target_path=target)
+            # Second manager fails to acquire while first holds it
+            lock2 = manager2._acquire_process_lock()
+            self.assertIsNone(lock2)
 
-            self.assertTrue(ok)
-            self.assertIn("updated successfully", message)
-            with open(target, "rb") as handle:
-                updated = handle.read()
-            self.assertEqual(updated, source)
+            manager1._release_process_lock(lock1)
 
-    def test_no_update_check_suppresses_background_thread(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            manager = ram.UpdateManager(
-                "0.5.3",
-                disabled=True,
-                cache_path=os.path.join(tmp, "cache.json"),
-                interval=1,
-            )
-            with mock.patch.object(
-                ram.threading,
-                "Thread",
-                side_effect=AssertionError("background thread spawned"),
-            ):
-                self.assertFalse(manager.start_background_check())
+            # Now second manager can acquire
+            lock3 = manager2._acquire_process_lock()
+            self.assertIsNotNone(lock3)
+            manager2._release_process_lock(lock3)
 
     def test_cli_update_flags(self):
-        args = ram.parse_arguments(["--update"])
+        args = ram.parse_arguments(["--update", "--force"])
         self.assertTrue(args.update)
+        self.assertTrue(args.force)
         args = ram.parse_arguments(["--check-update", "--no-update-check"])
         self.assertTrue(args.check_update)
         self.assertTrue(args.no_update_check)

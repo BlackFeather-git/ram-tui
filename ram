@@ -8,7 +8,9 @@ License: MIT
 """
 
 import argparse
+import ast
 import ctypes
+import hashlib
 import json
 import os
 import platform
@@ -1006,15 +1008,12 @@ def get_processes(group_by_name=True, limit=8):
 
 UPDATE_API_URL = "https://api.github.com/repos/BlackFeather-git/ram-tui/releases/latest"
 UPDATE_RAW_BASE_URL = "https://raw.githubusercontent.com/BlackFeather-git/ram-tui"
-UPDATE_DEFAULT_INTERVAL = 60
+UPDATE_DEFAULT_INTERVAL = 43200
+UPDATE_MAX_API_SIZE = 64 * 1024
 UPDATE_MAX_SOURCE_SIZE = 2 * 1024 * 1024
 UPDATE_VERSION_RE = re.compile(
     r"^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
     r"(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$"
-)
-SOURCE_VERSION_RE = re.compile(
-    r"^\s*__version__\s*=\s*['\"]([^'\"]+)['\"]\s*$",
-    re.MULTILINE,
 )
 
 
@@ -1062,32 +1061,90 @@ def is_newer_version(current, latest):
 
 
 def parse_update_interval(value):
-    """Parse seconds or s/m/h suffixes for background update checks."""
+    """Parse seconds or s/m/h suffixes for background update checks. Never crashes."""
     if value is None:
         return UPDATE_DEFAULT_INTERVAL
-    value = str(value).strip().lower()
-    if value.isdigit():
-        seconds = int(value)
-    else:
-        match = re.fullmatch(r"(\d+)([smh])", value)
-        if not match:
-            raise ValueError("invalid update interval")
-        amount, suffix = match.groups()
-        multiplier = {"s": 1, "m": 60, "h": 3600}[suffix]
-        seconds = int(amount) * multiplier
+    try:
+        val_str = str(value).strip().lower()
+        if val_str.isdigit():
+            seconds = int(val_str)
+        else:
+            match = re.fullmatch(r"(\d+)([smh])", val_str)
+            if not match:
+                return UPDATE_DEFAULT_INTERVAL
+            amount, suffix = match.groups()
+            multiplier = {"s": 1, "m": 60, "h": 3600}[suffix]
+            seconds = int(amount) * multiplier
 
-    if seconds <= 0:
-        raise ValueError("update interval must be positive")
-    return seconds
+        if seconds <= 0:
+            return UPDATE_DEFAULT_INTERVAL
+        return seconds
+    except Exception:
+        return UPDATE_DEFAULT_INTERVAL
+
+
+def detect_package_manager_install(target_path):
+    """Detect if target path appears to belong to a managed system package."""
+    if not target_path:
+        return None
+    norm = os.path.normpath(os.path.abspath(target_path)).lower()
+
+    if norm.startswith(("/usr/bin", "/usr/sbin", "/bin", "/sbin", "/usr/lib")):
+        return "system package manager (e.g. pacman, apt, dnf)"
+
+    if norm.startswith(("/opt/homebrew", "/usr/local/cellar", "/home/linuxbrew/.linuxbrew")):
+        return "Homebrew (brew)"
+
+    if "\\scoop\\apps\\" in norm or "\\scoop\\shims\\" in norm or "/scoop/apps/" in norm or "/scoop/shims/" in norm:
+        return "Scoop"
+
+    return None
+
+
+def _extract_ast_version(tree):
+    """Extract module-level __version__ declaration from an AST tree."""
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == "__version__":
+                    if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+                        return node.value.value
+                    elif isinstance(node.value, ast.Str):
+                        return node.value.s
+        elif isinstance(node, ast.AnnAssign):
+            if isinstance(node.target, ast.Name) and node.target.id == "__version__":
+                if node.value and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+                    return node.value.value
+                elif node.value and isinstance(node.value, ast.Str):
+                    return node.value.s
+    return None
+
+
+def _has_ast_main_block(tree):
+    """Verify presence of module-level if __name__ == '__main__': entry point block."""
+    for node in tree.body:
+        if isinstance(node, ast.If):
+            test = node.test
+            if isinstance(test, ast.Compare):
+                left = test.left
+                if isinstance(left, ast.Name) and left.id == "__name__":
+                    for op, comp in zip(test.ops, test.comparators):
+                        if isinstance(op, ast.Eq):
+                            if isinstance(comp, ast.Constant) and comp.value == "__main__":
+                                return True
+                            elif isinstance(comp, ast.Str) and comp.s == "__main__":
+                                return True
+    return False
 
 
 class UpdateManager:
-    """Offline-first update checker and in-place updater."""
+    """Offline-first update checker and cryptographic in-place updater."""
 
     def __init__(self, current_version, disabled=False, cache_path=None, interval=None):
         self.current_version = current_version
         self.disabled = bool(disabled)
         self.interval = (
+            UPDATE_DEFAULT_INTERVAL if self.disabled else
             parse_update_interval(
                 interval if interval is not None
                 else os.environ.get("RAM_UPDATE_INTERVAL")
@@ -1115,6 +1172,9 @@ class UpdateManager:
             with open(self.cache_path, "r", encoding="utf-8") as handle:
                 data = json.load(handle)
 
+            if not isinstance(data, dict):
+                return {}
+
             last_checked = data.get("last_checked")
             latest_version = data.get("latest_version")
             has_update = data.get("has_update")
@@ -1137,7 +1197,8 @@ class UpdateManager:
             return {}
 
     def cache_expired(self, now=None):
-        state = self._state
+        with self._lock:
+            state = dict(self._state)
         last_checked = state.get("last_checked")
         if last_checked is None:
             return True
@@ -1195,7 +1256,7 @@ class UpdateManager:
             self._state = state
 
     @staticmethod
-    def _request(url, user_agent):
+    def _request(url, user_agent, max_size=None):
         request = urllib.request.Request(
             url,
             headers={
@@ -1203,75 +1264,118 @@ class UpdateManager:
                 "Accept": "application/vnd.github+json",
             },
         )
-        return urllib.request.urlopen(request, timeout=1.0)
+        with urllib.request.urlopen(request, timeout=1.0) as response:
+            chunks = []
+            total = 0
+            limit = max_size or UPDATE_MAX_SOURCE_SIZE
+            while True:
+                chunk = response.read(16384)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > limit:
+                    raise ValueError(f"response exceeded safety limit of {limit} bytes")
+                chunks.append(chunk)
+            data = b"".join(chunks)
+            if not data:
+                raise ValueError("empty response received")
+            return data
 
     def fetch_latest_version(self):
         user_agent = f"ram-tui/{self.current_version}"
-        with self._request(UPDATE_API_URL, user_agent) as response:
-            payload = json.loads(response.read().decode("utf-8"))
+        raw = self._request(UPDATE_API_URL, user_agent, max_size=UPDATE_MAX_API_SIZE)
+        try:
+            payload = json.loads(raw.decode("utf-8"))
+        except Exception as exc:
+            raise ValueError("GitHub API returned invalid JSON") from exc
+
+        if not isinstance(payload, dict):
+            raise ValueError("GitHub API returned invalid payload structure")
 
         tag_name = payload.get("tag_name")
         parsed = parse_semver(tag_name)
         if parsed is None:
-            raise ValueError("GitHub returned an invalid release tag")
+            raise ValueError(f"GitHub returned an invalid release tag: '{tag_name}'")
         return tag_name.lstrip("v")
 
     def _download_source(self, latest_version):
         user_agent = f"ram-tui/{self.current_version}"
         url = f"{UPDATE_RAW_BASE_URL}/v{latest_version}/ram"
+        return self._request(url, user_agent, max_size=UPDATE_MAX_SOURCE_SIZE)
 
-        with self._request(url, user_agent) as response:
-            chunks = []
-            total = 0
-            while True:
-                chunk = response.read(65536)
-                if not chunk:
-                    break
-                total += len(chunk)
-                if total > UPDATE_MAX_SOURCE_SIZE:
-                    raise ValueError("downloaded source exceeds safety limit")
-                chunks.append(chunk)
-
-        data = b"".join(chunks)
-        if not data:
-            raise ValueError("downloaded source is empty")
-        return data
+    def _fetch_expected_sha256(self, latest_version):
+        user_agent = f"ram-tui/{self.current_version}"
+        url = f"{UPDATE_RAW_BASE_URL}/v{latest_version}/ram.sha256"
+        try:
+            raw = self._request(url, user_agent, max_size=4096)
+            text = raw.decode("utf-8").strip()
+            match = re.search(r"([0-9a-fA-F]{64})", text)
+            if match:
+                return match.group(1).lower()
+        except Exception:
+            pass
+        return None
 
     @staticmethod
-    def _validate_source(data, expected_version, filename):
+    def _validate_source(data, expected_version, expected_sha256=None, filename="ram"):
+        if len(data) > UPDATE_MAX_SOURCE_SIZE:
+            raise ValueError("downloaded source exceeds safety limit")
+        if not data:
+            raise ValueError("downloaded source is empty")
+
+        # 1. Cryptographic SHA-256 verification
+        if expected_sha256:
+            computed_sha = hashlib.sha256(data).hexdigest().lower().strip()
+            clean_expected = expected_sha256.lower().strip()
+            if computed_sha != clean_expected:
+                raise ValueError(
+                    f"cryptographic integrity verification failed (SHA-256 mismatch): "
+                    f"expected {clean_expected[:12]}..., computed {computed_sha[:12]}..."
+                )
+
+        # 2. UTF-8 decoding
         try:
             source = data.decode("utf-8")
-            compile(source, filename, "exec")
-        except (UnicodeDecodeError, SyntaxError) as exc:
+        except UnicodeDecodeError as exc:
             raise ValueError("downloaded file is not valid UTF-8 Python source") from exc
 
-        version_match = SOURCE_VERSION_RE.search(source)
-        if not version_match:
-            raise ValueError("downloaded source has no __version__ declaration")
+        # 3. Bytecode compilation
+        try:
+            compile(source, filename, "exec")
+        except SyntaxError as exc:
+            raise ValueError(f"downloaded file contains invalid Python syntax: {exc}") from exc
 
-        actual_version = version_match.group(1)
+        # 4. AST semantic verification
+        try:
+            tree = ast.parse(source, filename=filename)
+        except Exception as exc:
+            raise ValueError(f"failed to parse downloaded source AST: {exc}") from exc
+
+        actual_version = _extract_ast_version(tree)
+        if not actual_version:
+            raise ValueError("downloaded source has no valid module-level __version__ declaration")
+
         if parse_semver(actual_version) is None:
-            raise ValueError("downloaded source has an invalid __version__")
+            raise ValueError(f"downloaded source has an invalid __version__: '{actual_version}'")
 
-        if not (
-            parse_semver(actual_version)
-            == parse_semver(expected_version)
-        ):
+        if parse_semver(actual_version) != parse_semver(expected_version):
             raise ValueError(
                 f"downloaded source version {actual_version} does not match "
                 f"release version {expected_version}"
             )
 
-        if 'if __name__ == "__main__":' not in source:
-            raise ValueError("downloaded source has no executable entry point")
+        if not _has_ast_main_block(tree):
+            raise ValueError("downloaded source lacks a valid 'if __name__ == \"__main__\":' entry point block")
 
     @staticmethod
     def _resolve_target(target_path=None):
         target = target_path or sys.argv[0]
-        target = os.path.realpath(os.path.abspath(target))
-        if not os.path.isfile(target):
-            raise FileNotFoundError(f"installed executable not found: {target}")
-        return target
+        abs_target = os.path.abspath(target)
+        is_symlink = os.path.islink(abs_target)
+        real_target = os.path.realpath(abs_target)
+        if not os.path.isfile(real_target):
+            raise FileNotFoundError(f"installed executable not found: {real_target}")
+        return real_target, is_symlink, abs_target
 
     def _atomic_replace(self, data, target_path):
         target_dir = os.path.dirname(target_path) or "."
@@ -1305,6 +1409,31 @@ class UpdateManager:
                 except OSError:
                     pass
 
+    def _acquire_process_lock(self):
+        lock_path = self.cache_path + ".lock"
+        try:
+            cache_dir = os.path.dirname(self.cache_path)
+            os.makedirs(cache_dir, mode=0o700, exist_ok=True)
+            if os.path.exists(lock_path):
+                try:
+                    if time.time() - os.path.getmtime(lock_path) > 30.0:
+                        os.unlink(lock_path)
+                except OSError:
+                    pass
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            os.write(fd, f"{os.getpid()} {time.time()}".encode("utf-8"))
+            os.close(fd)
+            return lock_path
+        except (OSError, Exception):
+            return None
+
+    def _release_process_lock(self, lock_path):
+        if lock_path:
+            try:
+                os.unlink(lock_path)
+            except OSError:
+                pass
+
     def check_now(self):
         """Synchronously check GitHub and update the local cache."""
         latest = self.fetch_latest_version()
@@ -1325,14 +1454,19 @@ class UpdateManager:
         return True
 
     def _background_worker(self):
+        lock = self._acquire_process_lock()
+        if not lock:
+            return
         try:
             self.check_now()
         except Exception:
             # Background update checks must never affect the main UI.
             return
+        finally:
+            self._release_process_lock(lock)
 
-    def perform_update(self, target_path=None):
-        """Download, validate, and atomically replace the running source."""
+    def perform_update(self, target_path=None, force=False):
+        """Download, validate cryptographically & semantically, and atomically replace."""
         try:
             latest, has_update = self.check_now()
         except Exception as exc:
@@ -1342,17 +1476,34 @@ class UpdateManager:
             return True, f"ram-tui is already up to date (v{latest})"
 
         try:
-            target = self._resolve_target(target_path)
+            real_target, is_symlink, abs_target = self._resolve_target(target_path)
+
+            # Package manager conflict detection
+            pkg_mgr = detect_package_manager_install(real_target)
+            if pkg_mgr and not force:
+                return (
+                    False,
+                    f"Notice: ram-tui is installed in a package-managed path ({real_target}) "
+                    f"managed by {pkg_mgr}.\n"
+                    "Self-updating will desynchronize your package manager database.\n"
+                    "Please update via your package manager, or run 'ram --update --force' to override."
+                )
+
             data = self._download_source(latest)
-            self._validate_source(data, latest, target)
-            self._atomic_replace(data, target)
+            expected_sha256 = self._fetch_expected_sha256(latest)
+            self._validate_source(data, latest, expected_sha256=expected_sha256, filename=real_target)
+            self._atomic_replace(data, real_target)
+
+            msg = f"ram-tui updated successfully: v{self.current_version} -> v{latest}"
+            if is_symlink:
+                msg += f" (symlink target: {real_target})"
+            return True, msg
         except PermissionError:
             return (
                 False,
                 "ram-tui could not replace the installed executable because "
-                f"the target directory is not writable: {target_path or sys.argv[0]}. "
-                "Try 'sudo ram --update' for a system install, or update it "
-                "through your package manager.",
+                f"the target directory is not writable: {target_path or sys.argv[0]}.\n"
+                "Try 'sudo ram --update' for a system install, or update through your package manager.",
             )
         except OSError as exc:
             return False, (
@@ -1362,8 +1513,6 @@ class UpdateManager:
             )
         except Exception as exc:
             return False, f"ram-tui update aborted safely: {exc}"
-
-        return True, f"ram-tui updated successfully: v{self.current_version} -> v{latest}"
 
 
 # ---------------------------------------------------------------------------
@@ -1598,6 +1747,7 @@ def parse_arguments(args=None):
     
     # In-Place Updater
     parser.add_argument("--update", action="store_true", help="Update ram-tui to latest release in-place and exit")
+    parser.add_argument("--force", action="store_true", help="Force in-place update even if installed via a package manager")
     parser.add_argument("--check-update", action="store_true", help="Check for updates and exit")
     parser.add_argument("--no-update-check", action="store_true", help="Disable background update check")
     
@@ -1633,7 +1783,7 @@ def main():
     )
 
     if args.update:
-        ok, msg = update_manager.perform_update()
+        ok, msg = update_manager.perform_update(force=args.force)
         sys.stdout.write(msg + "\n")
         sys.exit(0 if ok else 1)
 

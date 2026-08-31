@@ -6,7 +6,7 @@ _ram_completions() {
     COMPREPLY=()
     cur="${COMPWORDS[COMPCWORD]}"
     prev="${COMPWORDS[COMPCWORD-1]}"
-    opts="--theme --symbol --rate -r --count -n --compact --mini --tiny --json --once -1 --no-group --update --check-update --no-update-check --help -h --version -v"
+    opts="--theme --symbol --rate -r --count -n --compact --mini --tiny --json --once -1 --no-group --update --force --check-update --no-update-check --help -h --version -v"
     themes="default dracula catppuccin nord tokyo-night gruvbox cyberpunk rose-pine everforest kanagawa monokai solarized monochrome"
     symbols="block braille"
 

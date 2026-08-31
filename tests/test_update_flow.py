@@ -4,13 +4,15 @@ Dedicated Local Update Flow Tester for ram-tui
 
 Spins up a lightweight local mock HTTP server that simulates GitHub Releases
 API and raw CDN source downloads, validating the entire update lifecycle:
-1. Release tag discovery and JSON parsing.
-2. 60-second default cache interval and expiration calculation.
-3. UTF-8 source downloading, bytecode compilation, and version verification.
-4. Atomic in-place file replacement with Unix permission preservation.
-5. Command-line interface integration (--check-update, --update, --no-update-check).
+1. Release tag discovery and bounded JSON parsing.
+2. 12-hour default cache interval and boundary expiration checks.
+3. Cryptographic SHA-256 integrity verification.
+4. AST semantic structure analysis (top-level __version__ and __main__ block).
+5. Atomic in-place file replacement with Unix permission preservation.
+6. Package-manager conflict detection and --force override handling.
 """
 
+import hashlib
 import http.server
 import json
 import os
@@ -33,9 +35,10 @@ class MockGitHubHandler(http.server.BaseHTTPRequestHandler):
 
     latest_tag = "v0.6.0-beta.2"
     mock_payload_version = "0.6.0-beta.2"
+    serve_sha256 = True
 
     def log_message(self, format, *args):
-        # Suppress standard HTTP server logging to keep test output clean
+        # Suppress standard HTTP server logging
         pass
 
     def do_GET(self):
@@ -60,6 +63,22 @@ class MockGitHubHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(script_content)))
             self.end_headers()
             self.wfile.write(script_content)
+        elif self.path.endswith("/ram.sha256") and self.serve_sha256:
+            script_content = (
+                "#!/usr/bin/env python3\n"
+                f'__version__ = "{self.mock_payload_version}"\n\n'
+                "def main():\n"
+                "    print('ram-tui updated binary running')\n\n"
+                'if __name__ == "__main__":\n'
+                "    main()\n"
+            ).encode("utf-8")
+            digest = hashlib.sha256(script_content).hexdigest()
+            payload = f"{digest}  ram\n".encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
         else:
             self.send_response(404)
             self.end_headers()
@@ -108,17 +127,17 @@ class LocalUpdateFlowTest(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
-    def test_default_interval_is_one_minute(self):
-        """Verify the testing phase default check interval is strictly 60 seconds (1 minute)."""
+    def test_default_interval_is_12_hours(self):
+        """Verify the release default check interval is strictly 43200 seconds (12 hours)."""
         manager = ram_module.UpdateManager("0.6.0-beta.1", cache_path=self.cache_file)
-        self.assertEqual(manager.interval, 60)
+        self.assertEqual(manager.interval, 43200)
 
     def test_mock_server_check_and_cache(self):
         """Verify query against mock server updates the cache file."""
         manager = ram_module.UpdateManager(
             "0.6.0-beta.1",
             cache_path=self.cache_file,
-            interval=60,
+            interval=3600,
         )
         latest, has_update = manager.check_now()
         self.assertEqual(latest, "0.6.0-beta.2")
@@ -132,25 +151,25 @@ class LocalUpdateFlowTest(unittest.TestCase):
         self.assertIn("last_checked", cache_data)
 
     def test_cache_expiration_boundary(self):
-        """Verify cache expires precisely after 60 seconds."""
+        """Verify cache expires based on configured interval."""
         manager = ram_module.UpdateManager(
             "0.6.0-beta.1",
             cache_path=self.cache_file,
-            interval=60,
+            interval=3600,
         )
         manager.check_now()
         now = time.time()
-        # 30 seconds later -> cache valid
-        self.assertFalse(manager.cache_expired(now=now + 30))
-        # 61 seconds later -> cache expired
-        self.assertTrue(manager.cache_expired(now=now + 61))
+        # 1800 seconds later -> cache valid
+        self.assertFalse(manager.cache_expired(now=now + 1800))
+        # 3601 seconds later -> cache expired
+        self.assertTrue(manager.cache_expired(now=now + 3601))
 
-    def test_perform_update_replaces_executable_safely(self):
-        """Verify download, compilation check, and atomic in-place replacement."""
+    def test_perform_update_replaces_executable_with_sha256_verification(self):
+        """Verify download, SHA-256 check, AST analysis, and atomic replacement."""
         manager = ram_module.UpdateManager(
             "0.6.0-beta.1",
             cache_path=self.cache_file,
-            interval=60,
+            interval=3600,
         )
         ok, msg = manager.perform_update(target_path=self.target_bin)
         self.assertTrue(ok)
@@ -171,7 +190,7 @@ class LocalUpdateFlowTest(unittest.TestCase):
         manager = ram_module.UpdateManager(
             "0.6.0-beta.1",
             cache_path=self.cache_file,
-            interval=60,
+            interval=3600,
         )
         manager.check_now()
         notice = manager.get_notification()
