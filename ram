@@ -35,7 +35,7 @@ if SYSTEM_OS == "Linux":
 # Process starttime-keyed cache to prevent PID-reuse race conditions
 PID_NAME_CACHE = {}
 
-# ANSI escape sequence regex for complete sequence removal
+# ANSI escape sequence regex for complete sequence removal & visible length calculation
 ANSI_ESCAPE_RE = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
 # Unicode bidirectional control characters to strip for terminal integrity
@@ -89,7 +89,7 @@ if SYSTEM_OS == "Windows":
 
 
 # ---------------------------------------------------------------------------
-# Theme Engine & Color Palettes
+# Theme Engine & Modern Color Palettes (24-bit TrueColor)
 # ---------------------------------------------------------------------------
 THEME_NAMES = [
     "default",
@@ -114,6 +114,7 @@ THEME_PALETTES = {
         "critical": "\033[38;2;240;90;90m",     # Red
         "muted": "\033[38;2;140;145;155m",      # Gray
         "track": "\033[38;2;65;70;80m",         # Dark Gray
+        "border": "\033[38;2;75;80;92m",        # Border
         "text": "\033[38;2;235;240;245m",       # White
         "dim": "\033[2m",
     },
@@ -125,6 +126,7 @@ THEME_PALETTES = {
         "critical": "\033[38;2;243;139;168m",   # Red/Maroon
         "muted": "\033[38;2;147;153;178m",      # Overlay0
         "track": "\033[38;2;69;71;90m",         # Surface1
+        "border": "\033[38;2;88;91;112m",       # Surface2
         "text": "\033[38;2;205;214;244m",       # Text
         "dim": "\033[2m",
     },
@@ -136,6 +138,7 @@ THEME_PALETTES = {
         "critical": "\033[38;2;191;97;106m",    # Nord11 Red
         "muted": "\033[38;2;216;222;233m",      # Nord4 Snow Storm
         "track": "\033[38;2;76;86;106m",        # Nord3 Polar Night
+        "border": "\033[38;2;94;129;172m",      # Nord10 Blue
         "text": "\033[38;2;236;239;244m",       # Nord6 White
         "dim": "\033[2m",
     },
@@ -147,6 +150,7 @@ THEME_PALETTES = {
         "critical": "\033[38;2;247;118;142m",   # Red
         "muted": "\033[38;2;115;126;162m",      # Dark Blue-Gray
         "track": "\033[38;2;65;72;104m",        # Dark Track
+        "border": "\033[38;2;86;95;137m",       # Border
         "text": "\033[38;2;192;202;245m",       # Foreground
         "dim": "\033[2m",
     },
@@ -158,6 +162,7 @@ THEME_PALETTES = {
         "critical": "\033[38;2;255;85;85m",     # Red
         "muted": "\033[38;2;98;114;164m",       # Comment Gray
         "track": "\033[38;2;68;71;90m",         # Current Line
+        "border": "\033[38;2;98;114;164m",      # Border
         "text": "\033[38;2;248;248;242m",       # Foreground
         "dim": "\033[2m",
     },
@@ -169,6 +174,7 @@ THEME_PALETTES = {
         "critical": "\033[38;2;251;73;52m",     # Bright Red
         "muted": "\033[38;2;146;131;116m",      # Gray
         "track": "\033[38;2;60;56;54m",         # Dark Track
+        "border": "\033[38;2;102;92;84m",       # Border
         "text": "\033[38;2;235;219;178m",       # Light Foreground
         "dim": "\033[2m",
     },
@@ -180,26 +186,20 @@ THEME_PALETTES = {
         "critical": "\033[38;2;255;0;60m",      # Neon Crimson
         "muted": "\033[38;2;113;113;138m",      # Muted Purple-Gray
         "track": "\033[38;2;45;35;60m",         # Track Dark
+        "border": "\033[38;2;255;42;157m",      # Neon Pink Border
         "text": "\033[38;2;245;245;255m",       # White Glow
         "dim": "\033[2m",
     },
     "monochrome": {
-        "header": "",
-        "accent": "",
-        "good": "",
-        "warning": "",
-        "critical": "",
-        "muted": "",
-        "track": "",
-        "text": "",
-        "dim": "",
+        "header": "", "accent": "", "good": "", "warning": "",
+        "critical": "", "muted": "", "track": "", "border": "",
+        "text": "", "dim": "",
     },
 }
 
+FRACTIONAL_BLOCKS = ["", "▏", "▎", "▍", "▌", "▋", "▊", "▉"]
 BLOCK_FULL = "█"
 BLOCK_TRACK = "░"
-BLOCK_BORDER_L = "["
-BLOCK_BORDER_R = "]"
 
 
 def should_use_color(is_interactive=True):
@@ -217,7 +217,7 @@ def get_palette(theme_name="default", enable_color=True):
         return {
             "RESET": "", "BOLD": "", "DIM": "",
             "HEADER": "", "ACCENT": "", "GOOD": "", "WARNING": "",
-            "CRITICAL": "", "MUTED": "", "TRACK": "", "TEXT": "",
+            "CRITICAL": "", "MUTED": "", "TRACK": "", "BORDER": "", "TEXT": "",
         }
     
     t = THEME_PALETTES[theme_name]
@@ -232,8 +232,21 @@ def get_palette(theme_name="default", enable_color=True):
         "CRITICAL": t["critical"],
         "MUTED": t["muted"],
         "TRACK": t["track"],
+        "BORDER": t["border"],
         "TEXT": t["text"],
     }
+
+
+def visible_length(text):
+    """Returns the visual character length of a string ignoring ANSI codes."""
+    return len(ANSI_ESCAPE_RE.sub("", text))
+
+
+def pad_card_line(content, card_width, border_color="", reset=""):
+    """Pads a line to fit precisely inside a card container with side borders."""
+    vis = visible_length(content)
+    padding = max(0, card_width - 2 - vis)
+    return f"{border_color}│{reset}{content}{' ' * padding}{border_color}│{reset}"
 
 
 def format_bytes(value, precision=2):
@@ -311,7 +324,7 @@ class TerminalManager:
         if SYSTEM_OS == "Windows" and self.is_tty:
             try:
                 kernel32 = ctypes.windll.kernel32
-                self.h_stdout = kernel32.GetStdHandle(0xFFFFFFF5)  # STD_OUTPUT_HANDLE (-11)
+                self.h_stdout = kernel32.GetStdHandle(0xFFFFFFF5)
                 mode = ctypes.c_ulong()
                 if kernel32.GetConsoleMode(self.h_stdout, ctypes.byref(mode)):
                     self.orig_console_mode = mode.value
@@ -338,18 +351,17 @@ class TerminalManager:
                     tty.setcbreak(self.fd)
                 except Exception:
                     pass
-            sys.stdout.write("\033[?25l")  # Hide cursor
+            sys.stdout.write("\033[?25l")
             sys.stdout.flush()
 
     def restore(self):
-        """Idempotent terminal restoration ensuring zero duplicate writes."""
         if self._restored:
             return
         self._restored = True
 
         if self.is_tty:
             try:
-                sys.stdout.write("\033[?25h\033[0m\n")  # Show cursor & reset styles
+                sys.stdout.write("\033[?25h\033[0m\n")
                 sys.stdout.flush()
             except Exception:
                 pass
@@ -368,7 +380,6 @@ class TerminalManager:
                     pass
 
     def check_key(self):
-        """Non-blocking key reader across Linux, macOS, and Windows."""
         if not self.is_tty:
             return None
         if SYSTEM_OS == "Windows":
@@ -397,7 +408,6 @@ class TerminalManager:
 # ---------------------------------------------------------------------------
 
 def get_meminfo_linux():
-    """Parses /proc/meminfo and /proc/swaps on Linux."""
     info = {}
     try:
         with open("/proc/meminfo", "r") as f:
@@ -435,13 +445,13 @@ def get_meminfo_linux():
         pass
 
     if has_zram and has_disk:
-        swap_desc = "zram + disk swap"
+        swap_desc = "zram + disk"
     elif has_zram:
-        swap_desc = "zram swap"
+        swap_desc = "zram"
     elif has_disk:
         swap_desc = "disk swap"
     else:
-        swap_desc = "no active swap"
+        swap_desc = "none"
 
     return {
         "total": total,
@@ -458,7 +468,6 @@ def get_meminfo_linux():
 
 
 def get_meminfo_windows():
-    """Fetches system memory using GlobalMemoryStatusEx and GetPerformanceInfo with explicit 64-bit FFI."""
     try:
         class MEMORYSTATUSEX(ctypes.Structure):
             _fields_ = [
@@ -521,7 +530,7 @@ def get_meminfo_windows():
             cached = None
 
         swap_total = max(0, stat.ullTotalPageFile - total)
-        swap_desc = "pagefile capacity"
+        swap_desc = "pagefile"
 
         return {
             "total": total,
@@ -540,7 +549,6 @@ def get_meminfo_windows():
 
 
 def get_meminfo_darwin():
-    """Fetches memory statistics on macOS using sysctl and vm_stat (Python 3.6+ compatible)."""
     try:
         total_str = run_command(["sysctl", "-n", "hw.memsize"], timeout=1.0).strip()
         total = int(total_str)
@@ -594,7 +602,7 @@ def get_meminfo_darwin():
             "cached": cached,
             "swap_used": swap_used,
             "swap_total": swap_total,
-            "swap_desc": "compressed RAM + disk swap",
+            "swap_desc": "compressed RAM",
             "valid": total > 0,
         }
     except Exception:
@@ -602,7 +610,6 @@ def get_meminfo_darwin():
 
 
 def get_meminfo():
-    """Cross-platform memory dispatcher."""
     if SYSTEM_OS == "Linux":
         return get_meminfo_linux()
     elif SYSTEM_OS == "Windows":
@@ -617,7 +624,6 @@ def get_meminfo():
 # ---------------------------------------------------------------------------
 
 def get_linux_proc_starttime(pid):
-    """Reads documented field 22 (starttime) from /proc/<pid>/stat."""
     try:
         with open(f"/proc/{pid}/stat", "r") as f:
             content = f.read()
@@ -632,7 +638,6 @@ def get_linux_proc_starttime(pid):
 
 
 def get_processes_linux(group_by_name=True, limit=8):
-    """Scans Linux /proc with documented stat starttime cache."""
     global PID_NAME_CACHE
     procs = {}
 
@@ -699,7 +704,6 @@ def get_processes_linux(group_by_name=True, limit=8):
 
 
 def get_processes_windows(group_by_name=True, limit=8):
-    """Scans processes on Windows using Tool Help API and GetProcessMemoryInfo."""
     procs = {}
     try:
         class PROCESSENTRY32W(ctypes.Structure):
@@ -779,7 +783,6 @@ def get_processes_windows(group_by_name=True, limit=8):
 
 
 def get_processes_darwin(group_by_name=True, limit=8):
-    """Scans processes on macOS using ps (Python 3.6+ compatible)."""
     procs = {}
     try:
         output = run_command(["ps", "-axo", "pid,rss,comm"], timeout=1.0)
@@ -807,7 +810,6 @@ def get_processes_darwin(group_by_name=True, limit=8):
 
 
 def get_processes(group_by_name=True, limit=8):
-    """Cross-platform process dispatcher."""
     if SYSTEM_OS == "Linux":
         return get_processes_linux(group_by_name=group_by_name, limit=limit)
     elif SYSTEM_OS == "Windows":
@@ -818,41 +820,32 @@ def get_processes(group_by_name=True, limit=8):
 
 
 # ---------------------------------------------------------------------------
-# Rendering Functions & Modes
+# Modern Card Rendering & Sub-Character Smooth Meter Engine
 # ---------------------------------------------------------------------------
 
-def render_bar(ratio, width=42, pal=None):
-    """Renders usage bar with dynamic width and theme palette colors."""
+def render_smooth_bar(ratio, width=28, pal=None):
+    """Renders high-resolution smooth fractional progress bar with sub-character accuracy."""
     pal = pal or get_palette("monochrome", False)
     ratio = clamp(ratio, 0.0, 1.0)
-    filled_len = int(round(width * ratio))
-    empty_len = width - filled_len
+    total_eighths = int(round(ratio * width * 8))
+    full_blocks = total_eighths // 8
+    rem_eighths = total_eighths % 8
+    empty_blocks = max(0, width - full_blocks - (1 if rem_eighths > 0 else 0))
 
     if ratio < 0.60:
-        fill_color = pal["GOOD"]
+        c = pal["GOOD"]
     elif ratio < 0.85:
-        fill_color = pal["WARNING"]
+        c = pal["WARNING"]
     else:
-        fill_color = pal["CRITICAL"]
+        c = pal["CRITICAL"]
 
-    bar_filled = f"{fill_color}{BLOCK_FULL * filled_len}{pal['RESET']}"
-    bar_empty = f"{pal['TRACK']}{BLOCK_TRACK * empty_len}{pal['RESET']}"
-    return f"{pal['MUTED']}{BLOCK_BORDER_L}{pal['RESET']}{bar_filled}{bar_empty}{pal['MUTED']}{BLOCK_BORDER_R}{pal['RESET']}"
-
-
-def render_mini_bar(ratio, width=16, pal=None):
-    """Renders proportional mini-bars."""
-    pal = pal or get_palette("monochrome", False)
-    ratio = clamp(ratio, 0.0, 1.0)
-    filled_len = int(round(width * ratio))
-    empty_len = width - filled_len
-    bar_filled = f"{pal['GOOD']}{BLOCK_FULL * filled_len}{pal['RESET']}"
-    bar_empty = f"{pal['TRACK']}{BLOCK_TRACK * empty_len}{pal['RESET']}"
-    return f"{bar_filled}{bar_empty}"
+    filled_part = f"{c}{BLOCK_FULL * full_blocks}{FRACTIONAL_BLOCKS[rem_eighths]}{pal['RESET']}"
+    empty_part = f"{pal['TRACK']}{BLOCK_TRACK * empty_blocks}{pal['RESET']}"
+    return f"{filled_part}{empty_part}"
 
 
 def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", theme="default", enable_color=True, show_help=False):
-    """Renders full memory screen according to the specified display mode and theme."""
+    """Renders modern card-based TUI dashboard across Hero, Compact, Mini, and Tiny modes."""
     pal = get_palette(theme, enable_color)
     hostname = sanitize_text(socket.gethostname())
     now_str = datetime.now().strftime("%a %H:%M:%S")
@@ -863,6 +856,18 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
     used_pct = percentage(used, total)
 
     cols = shutil.get_terminal_size((80, 24)).columns
+    card_w = min(76, max(38, cols - 2))
+
+    b = pal["BORDER"]
+    r = pal["RESET"]
+    t = pal["TEXT"]
+    h = pal["HEADER"]
+    a = pal["ACCENT"]
+    g = pal["GOOD"]
+    w = pal["WARNING"]
+    m = pal["MUTED"]
+    dim = pal["DIM"]
+    bold = pal["BOLD"]
 
     # 1. TINY MODE (Single line for Waybar / tmux / status bars)
     if mode == "tiny":
@@ -870,100 +875,104 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
         total_str = format_bytes(total, precision=1)
         res = f"RAM: {used_str} / {total_str} ({used_pct:.1f}%)"
         if show_help:
-            res += f"\n{pal['MUTED']}[q:quit  p:pause  t:theme  m:mode]{pal['RESET']}"
+            res += f"\n{m}[q:quit  p:pause  t:theme  m:mode]{r}"
         return res
 
-    # 2. MINI MODE (Compact usage track + percentage only)
+    # 2. MINI MODE (Sleek compact card meter)
     if mode == "mini":
-        bar_width = max(8, min(42, cols - 16))
-        bar_str = render_bar(used / total if total > 0 else 0, width=bar_width, pal=pal)
-        pct_color = pal["GOOD"] if used_pct < 60 else (pal["WARNING"] if used_pct < 85 else pal["CRITICAL"])
-        res = f"{pal['HEADER']}{pal['BOLD']}RAM{pal['RESET']} {bar_str} {pct_color}{pal['BOLD']}{used_pct:.1f}%{pal['RESET']}"
-        if show_help:
-            res += f"\n{pal['MUTED']}[q:quit  p:pause  t:theme  m:mode  +/-:rate]{pal['RESET']}"
-        return res
+        bar_w = max(8, card_w - 36)
+        smooth_bar = render_smooth_bar(used / total if total > 0 else 0, width=bar_w, pal=pal)
+        pct_color = g if used_pct < 60 else (w if used_pct < 85 else pal["CRITICAL"])
+        
+        title_badge = f" {h}{bold}⚡ RAM-TUI{r} {m}v{__version__}{r} "
+        theme_badge = f" {a}{theme}{r} "
+        header_title = f"{title_badge}{b}─{r}{theme_badge}"
+        vis_header = visible_length(header_title)
+        rem_top = max(2, card_w - 2 - vis_header - 1)
+        
+        lines = [
+            f"{b}╭─{r}{header_title}{b}{'─' * rem_top}╮{r}",
+            pad_card_line(f"  {t}{bold}RAM{r}  {b}[{r}{smooth_bar}{b}]{r} {pct_color}{bold}{used_pct:>5.1f}%{r}  {m}({format_bytes(used, 1)} / {format_bytes(total, 1)}){r}", card_w, b, r),
+        ]
+        footer_keys = f" {m}{dim}q:quit  p:pause  t:theme  m:mode{r} "
+        rem_bot = max(2, card_w - 2 - visible_length(footer_keys) - 1)
+        lines.append(f"{b}╰─{r}{footer_keys}{b}{'─' * rem_bot}╯{r}")
+        return "\n".join(lines)
 
-    # 3. HERO & COMPACT MODES
-    bar_width = max(8, min(42, cols - 15))
+    # 3. HERO & COMPACT MODES (Full rounded card container)
     lines = []
 
-    # Header
-    header = f"{pal['HEADER']}{pal['BOLD']}RAM USAGE{pal['RESET']} {pal['MUTED']}—{pal['RESET']} {pal['TEXT']}{hostname}{pal['RESET']}  {pal['MUTED']}{now_str}{pal['RESET']}"
-    if theme != "default":
-        header += f"  {pal['ACCENT']}[{theme}]{pal['RESET']}"
-    if paused:
-        header += f"  {pal['WARNING']}[PAUSED]{pal['RESET']}"
-    lines.append(header)
+    # Container Header Bar
+    title_badge = f" {h}{bold}⚡ RAM-TUI{r} {m}v{__version__}{r} "
+    theme_badge = f" {a}{theme}{r} "
+    status_badge = f" {w}⏸ PAUSED{r} " if paused else f" {g}● LIVE{r} "
+    
+    header_title = f"{title_badge}{b}─{r}{theme_badge}{b}─{r}{status_badge}"
+    vis_header = visible_length(header_title)
+    rem_top_border = max(2, card_w - 2 - vis_header - 1)
+    lines.append(f"{b}╭─{r}{header_title}{b}{'─' * rem_top_border}╮{r}")
 
-    # Main Bar
-    bar_str = render_bar(used / total if total > 0 else 0, width=bar_width, pal=pal)
-    pct_color = pal["GOOD"] if used_pct < 60 else (pal["WARNING"] if used_pct < 85 else pal["CRITICAL"])
-    lines.append(f"{bar_str} {pct_color}{pal['BOLD']}{used_pct:.1f}%{pal['RESET']}")
-    lines.append("")
+    # Machine Subheader
+    host_info = f" {t}{bold}{hostname}{r} {m}— {SYSTEM_OS} {platform.machine()}{r}"
+    time_info = f"{m}{now_str}{r} "
+    pad_sub = max(2, card_w - 2 - visible_length(host_info) - visible_length(time_info))
+    lines.append(f"{b}│{r}{host_info}{' ' * pad_sub}{time_info}{b}│{r}")
+    lines.append(f"{b}├{'─' * (card_w - 2)}┤{r}")
 
-    # Metrics Table
-    lines.append(
-        f"{pal['TEXT']}{pal['BOLD']}Used{pal['RESET']}    {pal['GOOD']}{format_bytes(used):<10}{pal['RESET']} "
-        f"{pal['TEXT']}{pal['BOLD']}Available{pal['RESET']}  {pal['GOOD']}{format_bytes(available):<10}{pal['RESET']} "
-        f"{pal['TEXT']}{pal['BOLD']}Total{pal['RESET']}   {pal['TEXT']}{format_bytes(total)}{pal['RESET']}"
-    )
+    # Main Memory Gauge Track
+    bar_width = max(10, card_w - 38)
+    smooth_bar = render_smooth_bar(used / total if total > 0 else 0, width=bar_width, pal=pal)
+    pct_color = g if used_pct < 60 else (w if used_pct < 85 else pal["CRITICAL"])
+    
+    gauge_line = f"  {t}{bold}RAM{r}  {b}[{r}{smooth_bar}{b}]{r} {pct_color}{bold}{used_pct:>5.1f}%{r}  {m}({format_bytes(used, 1)} / {format_bytes(total, 1)}){r}"
+    lines.append(pad_card_line(gauge_line, card_w, b, r))
+    lines.append(pad_card_line("", card_w, b, r))
 
-    # Commit metric
+    # Detailed Stats Grid
+    grid1 = f"  {m}● Used:{r} {g}{bold}{format_bytes(used):<10}{r}   {m}● Available:{r} {g}{bold}{format_bytes(available):<10}{r}   {m}● Total:{r} {t}{bold}{format_bytes(total)}{r}"
+    lines.append(pad_card_line(grid1, card_w, b, r))
+
+    # Commit Metric
     if mem.get("commit_as") is not None and mem.get("commit_limit") is not None:
-        commit_as = mem["commit_as"]
-        commit_limit = mem["commit_limit"]
-        commit_pct = percentage(commit_as, commit_limit)
-        lines.append(f"{pal['TEXT']}{pal['BOLD']}Commit{pal['RESET']}  {format_bytes(commit_as)} / {format_bytes(commit_limit)}  {pal['MUTED']}({commit_pct:.0f}% of commit limit){pal['RESET']}")
+        c_pct = percentage(mem['commit_as'], mem['commit_limit'])
+        commit_str = f"{format_bytes(mem['commit_as'], 1)}/{format_bytes(mem['commit_limit'], 1)} ({c_pct:.0f}%)"
     else:
-        lines.append(f"{pal['TEXT']}{pal['BOLD']}Commit{pal['RESET']}  N/A  {pal['MUTED']}(unsupported on macOS/platform){pal['RESET']}")
+        commit_str = "N/A"
 
-    # Cache metric
-    cached_val = mem.get("cached")
-    if cached_val is not None:
-        lines.append(f"{pal['TEXT']}{pal['BOLD']}Cached{pal['RESET']}  {format_bytes(cached_val):<10} {pal['MUTED']}(cache + reclaimable estimate){pal['RESET']}")
-    else:
-        lines.append(f"{pal['TEXT']}{pal['BOLD']}Cached{pal['RESET']}  N/A        {pal['MUTED']}(unsupported on platform / API error){pal['RESET']}")
+    cached_str = format_bytes(mem.get("cached", 0), 1) if mem.get("cached") is not None else "N/A"
+    swap_str = f"{format_bytes(mem.get('swap_used') or 0, 1)} ({mem.get('swap_desc', '')})"
 
-    # Swap metric
-    swap_used = mem.get("swap_used")
-    swap_total = mem.get("swap_total", 0)
-    swap_desc = mem.get("swap_desc", "")
-    if swap_used is not None:
-        lines.append(f"{pal['TEXT']}{pal['BOLD']}Swap{pal['RESET']}    {format_bytes(swap_used)} / {format_bytes(swap_total)}   {pal['MUTED']}({swap_desc}){pal['RESET']}")
-    else:
-        lines.append(f"{pal['TEXT']}{pal['BOLD']}Swap{pal['RESET']}    {format_bytes(swap_total)} capacity   {pal['MUTED']}({swap_desc}){pal['RESET']}")
+    grid2 = f"  {m}⚡ Commit:{r} {t}{commit_str:<15}{r} {m}📦 Cached:{r} {t}{cached_str:<9}{r} {m}🔄 Swap:{r} {t}{swap_str}{r}"
+    lines.append(pad_card_line(grid2, card_w, b, r))
 
-    # 4. PROCESS LIST (Only in HERO mode)
+    # 4. PROCESS ACTIVITY TABLE (Only in HERO mode)
     if mode == "hero" and procs:
-        lines.append("")
-        mode_str = "RESIDENT SET" if group_procs else "PROCESS PID"
-        lines.append(f"{pal['HEADER']}{pal['BOLD']}TOP {len(procs)} PROCESSES BY {mode_str}{pal['RESET']}")
+        lines.append(f"{b}├{'─' * (card_w - 2)}┤{r}")
+        mode_label = "RESIDENT SET" if group_procs else "PID"
+        table_header = f"  {h}{bold}TOP PROCESSES ({mode_label}){r}"
+        lines.append(pad_card_line(table_header, card_w, b, r))
 
-        max_rss = procs[0]["rss"] if procs else 1
-        proc_sum_rss = sum(p["rss"] for p in procs)
-        proc_sum_pct = percentage(proc_sum_rss, total)
-
-        name_col_width = max(10, min(19, cols - 35))
-        mini_bar_width = max(6, min(16, cols - 40))
+        max_p_rss = procs[0]["rss"] if procs else 1
+        name_width = max(10, min(18, card_w - 48))
+        p_bar_w = max(6, min(24, card_w - 46))
 
         for p in procs:
             count_str = f" ({p['count']})" if p.get("count", 1) > 1 else ""
             name_full = f"{p['name']}{count_str}"
-            name_disp = (name_full[:name_col_width - 1] + "~") if len(name_full) > name_col_width else name_full.ljust(name_col_width)
+            name_disp = (name_full[:name_width - 1] + "~") if len(name_full) > name_width else name_full.ljust(name_width)
 
-            rss_str = format_bytes(p["rss"], precision=1).rjust(9)
+            rss_str = format_bytes(p["rss"], precision=1).rjust(8)
             p_pct = percentage(p["rss"], total)
-            mini_bar = render_mini_bar(p["rss"] / max_rss if max_rss > 0 else 0, width=mini_bar_width, pal=pal)
+            p_bar = render_smooth_bar(p["rss"] / max_p_rss if max_p_rss > 0 else 0, width=p_bar_w, pal=pal)
 
-            lines.append(f"{pal['TEXT']}{name_disp}{pal['RESET']} {pal['GOOD']}{rss_str}{pal['RESET']}  {mini_bar}  {pal['MUTED']}{p_pct:>4.1f}%{pal['RESET']}")
+            proc_row = f"  {t}{name_disp}{r} {g}{rss_str}{r}  {b}[{r}{p_bar}{b}]{r} {m}{p_pct:>4.1f}%{r}"
+            lines.append(pad_card_line(proc_row, card_w, b, r))
 
-        lines.append("")
-        lines.append(f"{pal['MUTED']}These {len(procs)} account for  {pal['TEXT']}{format_bytes(proc_sum_rss)} ({proc_sum_pct:.0f}% of installed RAM){pal['RESET']}")
-
-    # Help footer
-    if show_help:
-        lines.append("")
-        lines.append(f"{pal['MUTED']}[q:quit  p:pause  t:theme  m:mode  1/2:group  +/-:rate]{pal['RESET']}")
+    # Bottom Rounded Card Footer
+    footer_keys = f" {m}{dim}q:quit  p:pause  t:theme  m:mode  1/2:group  +/-:rate{r} "
+    vis_footer = visible_length(footer_keys)
+    rem_bot_border = max(2, card_w - 2 - vis_footer - 1)
+    lines.append(f"{b}╰─{r}{footer_keys}{b}{'─' * rem_bot_border}╯{r}")
 
     return "\n".join(lines)
 
@@ -975,7 +984,7 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
 def parse_arguments(args=None):
     parser = argparse.ArgumentParser(
         prog="ram",
-        description=f"ram-tui v{__version__} - Real-time terminal memory monitor for Linux, macOS & Windows"
+        description=f"ram-tui v{__version__} - Modern real-time terminal memory monitor for Linux, macOS & Windows"
     )
     parser.add_argument("-r", "--rate", type=int, default=100, help="Refresh interval in milliseconds (20–2000, default: 100)")
     parser.add_argument("-n", "--count", type=int, default=8, help="Number of top processes (1–10000, default: 8)")
@@ -994,7 +1003,6 @@ def parse_arguments(args=None):
     
     parsed = parser.parse_args(args)
 
-    # Validate mutually exclusive modes
     modes_set = [m for m in [parsed.compact, parsed.mini, parsed.tiny] if m]
     if len(modes_set) > 1:
         parser.error("cannot specify multiple display modes (--compact, --mini, --tiny)")
@@ -1011,7 +1019,6 @@ def main():
     args = parse_arguments()
     term = TerminalManager()
 
-    # Determine initial display mode
     current_mode = "hero"
     if args.compact:
         current_mode = "compact"
@@ -1022,7 +1029,6 @@ def main():
 
     current_theme = args.theme
 
-    # Non-TTY automatic degradation
     if not term.is_tty and not args.json and not args.once:
         args.once = True
 
@@ -1088,11 +1094,9 @@ def main():
                 elif ch == "2":
                     group_procs = False
                 elif ch in ("t", "T"):
-                    # Cycle theme
                     idx = (THEME_NAMES.index(current_theme) + 1) % len(THEME_NAMES)
                     current_theme = THEME_NAMES[idx]
                 elif ch in ("m", "M"):
-                    # Cycle display modes (hero -> compact -> mini -> hero)
                     idx = (CYCLING_MODES.index(current_mode) + 1) % len(CYCLING_MODES) if current_mode in CYCLING_MODES else 0
                     current_mode = CYCLING_MODES[idx]
                 elif ch in ("h", "H", "?"):
