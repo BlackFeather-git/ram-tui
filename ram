@@ -981,18 +981,21 @@ def get_processes(group_by_name=True, limit=8):
 # Minimalist, Breathable Modern UI Rendering Engine
 # ---------------------------------------------------------------------------
 
-def render_meter_track(ratio, width=32, pal=None, symbol="block"):
+def render_meter_track(ratio, width=32, pal=None, symbol="block", color=None):
     """Renders progress bar with sub-character accuracy in Block or Braille style."""
     pal = pal or get_palette("monochrome", False)
     ratio = clamp(ratio, 0.0, 1.0)
     width = max(1, width)
 
-    if ratio < 0.60:
-        c = pal["GOOD"]
-    elif ratio < 0.85:
-        c = pal["WARNING"]
+    if color is not None:
+        c = color
     else:
-        c = pal["CRITICAL"]
+        if ratio < 0.60:
+            c = pal["GOOD"]
+        elif ratio < 0.85:
+            c = pal["WARNING"]
+        else:
+            c = pal["CRITICAL"]
 
     if symbol == "braille":
         total_steps = int(round(ratio * width * 2))
@@ -1108,9 +1111,9 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
         if rows >= 22:
             lines.append("")
 
-        if cols >= 68:
-            lines.append(clamp_line_to_cols(f"{m}USED          AVAILABLE     TOTAL         COMMIT              CACHED        SWAP{r}", cols))
-            lines.append(clamp_line_to_cols(f"{g}{bold}{format_bytes(used, 2):<14}{r}{t}{bold}{format_bytes(available, 2):<14}{r}{t}{bold}{format_bytes(total, 2):<14}{r}{t}{commit_str:<20}{r}{t}{cached_str:<14}{r}{t}{swap_str}{r}", cols))
+        if cols >= 76:
+            lines.append(clamp_line_to_cols(f"{m}USED       AVAILABLE   TOTAL      COMMIT          CACHED    SWAP{r}", cols))
+            lines.append(clamp_line_to_cols(f"{g}{bold}{format_bytes(used, 2):<11}{r}{t}{bold}{format_bytes(available, 2):<12}{r}{t}{bold}{format_bytes(total, 2):<11}{r}{t}{commit_str:<16}{r}{t}{cached_str:<10}{r}{t}{swap_str}{r}", cols))
         elif cols >= 44:
             lines.append(clamp_line_to_cols(f"{m}USED          AVAILABLE     TOTAL{r}", cols))
             lines.append(clamp_line_to_cols(f"{g}{bold}{format_bytes(used, 2):<14}{r}{t}{bold}{format_bytes(available, 2):<14}{r}{t}{bold}{format_bytes(total, 2):<14}{r}", cols))
@@ -1139,7 +1142,9 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
 
                 rss_str = format_bytes(p["rss"], precision=1).rjust(7)
                 p_pct = percentage(p["rss"], total)
-                p_meter = render_meter_track(p["rss"] / max(1, procs[0]["rss"]), width=p_bar_w, pal=pal, symbol=symbol)
+                p_color = g if p_pct < 40 else (w if p_pct < 70 else crit)
+                p_ratio = p["rss"] / max(1, procs[0]["rss"])
+                p_meter = render_meter_track(p_ratio, width=p_bar_w, pal=pal, symbol=symbol, color=p_color)
 
                 p_line = f"{t}{name_disp:<{name_w}}{r}   {g}{rss_str}{r}   {p_meter}   {m}{p_pct:>5.1f}%{r}"
                 lines.append(clamp_line_to_cols(p_line, cols))
