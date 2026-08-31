@@ -5,6 +5,13 @@ All notable changes to `ram-tui` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0-beta.2] - 2026-08-31
+
+### Changed
+- **Minimalist Unboxed UI Overhaul**: Replaced rigid box containers and emojis with a clean, breathable typographic layout with quiet horizontal dividers.
+- **3-Tier Responsive Layout**: Adaptive stats grid switching dynamically between 6-column single line ($\ge 68$ cols), 3-column wrapped grid ($\ge 50$ cols), and single-column vertical stack ($< 50$ cols for tmux splits).
+- **Sub-Character Smooth Gauges**: Fractional 1/8th sub-character unicode rendering (`█▉▊▋▌▍▎▏`) for smooth progress bar tracks.
+
 ---
 
 ## [0.5.0-beta.1] - 2026-08-31
