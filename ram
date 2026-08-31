@@ -1144,11 +1144,11 @@ def parse_update_interval(value):
         if val_str.isdigit():
             seconds = int(val_str)
         else:
-            match = re.fullmatch(r"(\d+)([smh])", val_str)
+            match = re.fullmatch(r"(\d+)([smhd])", val_str)
             if not match:
                 return UPDATE_DEFAULT_INTERVAL
             amount, suffix = match.groups()
-            multiplier = {"s": 1, "m": 60, "h": 3600}[suffix]
+            multiplier = {"s": 1, "m": 60, "h": 3600, "d": 86400}[suffix]
             seconds = int(amount) * multiplier
 
         if seconds <= 0:
