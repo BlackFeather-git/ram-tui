@@ -1059,7 +1059,11 @@ def verify_release_signature(data, signature_b64):
     if not signature_b64 or not isinstance(signature_b64, str):
         return False
     try:
-        sig_bytes = base64.b64decode(signature_b64.strip(), validate=True)
+        clean_sig = signature_b64.strip()
+        # Strict Base64 validation adhering to Python 3.6+ without version-specific validate=True kwarg
+        if not re.fullmatch(r"^[A-Za-z0-9+/]+={0,2}$", clean_sig):
+            return False
+        sig_bytes = base64.b64decode(clean_sig)
         if len(sig_bytes) != 256:
             return False
         sig_int = int.from_bytes(sig_bytes, "big")

@@ -14,28 +14,22 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 ram = SourceFileLoader("ram_tui_under_test", os.path.join(ROOT, "ram")).load_module()
 
-FIXTURE_KEY = os.path.join(ROOT, "tests", "fixtures", "test_key.pem")
-FIXTURE_MODULUS_FILE = os.path.join(ROOT, "tests", "fixtures", "test_modulus.hex")
+sys.path.insert(0, os.path.join(ROOT, "tests", "fixtures"))
+from test_key_data import TEST_KEY_N, TEST_KEY_D
 
-with open(FIXTURE_MODULUS_FILE, "r") as f:
-    TEST_PUBLIC_KEY_N = int(f.read().strip(), 16)
+TEST_PUBLIC_KEY_N = TEST_KEY_N
+ASN1_SHA256_PREFIX = b"\x30\x31\x30\x0d\x06\x09\x60\x86\x48\x01\x65\x03\x04\x02\x01\x05\x00\x04\x20"
 
 
 def sign_test_payload(data):
-    """Sign payload using test fixture key for CI cross-platform portability."""
-    with tempfile.NamedTemporaryFile("wb", delete=False) as df, tempfile.NamedTemporaryFile("wb", delete=False) as sf:
-        df.write(data)
-        df.flush()
-        df_name, sf_name = df.name, sf.name
-    try:
-        subprocess.check_call(["openssl", "dgst", "-sha256", "-sign", FIXTURE_KEY, "-out", sf_name, df_name], stderr=subprocess.DEVNULL)
-        with open(sf_name, "rb") as f:
-            return base64.b64encode(f.read()).decode("ascii")
-    finally:
-        if os.path.exists(df_name):
-            os.unlink(df_name)
-        if os.path.exists(sf_name):
-            os.unlink(sf_name)
+    """Sign payload using pure Python RSA-2048 PKCS#1 v1.5 signer for 100% CI cross-platform portability."""
+    digest = ASN1_SHA256_PREFIX + hashlib.sha256(data).digest()
+    pad_len = 256 - 3 - len(digest)
+    padded = b"\x00\x01" + (b"\xff" * pad_len) + b"\x00" + digest
+    padded_int = int.from_bytes(padded, "big")
+    sig_int = pow(padded_int, TEST_KEY_D, TEST_KEY_N)
+    sig_bytes = sig_int.to_bytes(256, "big")
+    return base64.b64encode(sig_bytes).decode("ascii")
 
 
 class FormattingAndSanitizationTests(unittest.TestCase):
