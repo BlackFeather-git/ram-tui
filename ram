@@ -185,7 +185,7 @@ THEME_PALETTES = {
         "warning": "\033[38;2;244;255;0m",      # Neon Yellow (#f4ff00)
         "critical": "\033[38;2;255;0;60m",      # Crimson (#ff003c)
         "muted": "\033[38;2;113;113;138m",      # Purple-Gray
-        "track": "\033[38;2;45;35;60m",         # Dark Track
+        "track": "\033[38;2;45;35;60m",         # Track Dark
         "text": "\033[38;2;245;245;255m",       # White Glow
         "dim": "\033[2m",
     },
@@ -253,10 +253,6 @@ THEME_PALETTES = {
 BLOCK_FRACTIONS = ["", "▏", "▎", "▍", "▌", "▋", "▊", "▉"]
 BLOCK_FULL = "█"
 BLOCK_TRACK = "░"
-
-BRAILLE_FRACTIONS = ["", "⡀", "⣀", "⣄", "⣤", "⣦", "⣶", "⣷"]
-BRAILLE_FULL = "⣿"
-BRAILLE_TRACK = "⣀"
 
 
 def should_use_color(is_interactive=True):
@@ -871,10 +867,6 @@ def render_meter_track(ratio, width=32, pal=None, symbol="block"):
     """Renders progress bar with sub-character accuracy in Block or Braille style."""
     pal = pal or get_palette("monochrome", False)
     ratio = clamp(ratio, 0.0, 1.0)
-    total_eighths = int(round(ratio * width * 8))
-    full_blocks = total_eighths // 8
-    rem_eighths = total_eighths % 8
-    empty_blocks = max(0, width - full_blocks - (1 if rem_eighths > 0 else 0))
 
     if ratio < 0.60:
         c = pal["GOOD"]
@@ -884,17 +876,23 @@ def render_meter_track(ratio, width=32, pal=None, symbol="block"):
         c = pal["CRITICAL"]
 
     if symbol == "braille":
-        full_char = BRAILLE_FULL
-        fractions = BRAILLE_FRACTIONS
-        track_char = BRAILLE_TRACK
+        # 2-step horizontal sub-character: left half ⡇, full ⣿
+        total_steps = int(round(ratio * width * 2))
+        full_blocks = total_steps // 2
+        rem_steps = total_steps % 2
+        empty_blocks = max(0, width - full_blocks - (1 if rem_steps > 0 else 0))
+        frac_char = "⡇" if rem_steps == 1 else ""
+        filled_part = f"{c}{'⣿' * full_blocks}{frac_char}{pal['RESET']}"
+        empty_part = f"{pal['TRACK']}{BLOCK_TRACK * empty_blocks}{pal['RESET']}"
+        return f"{filled_part}{empty_part}"
     else:
-        full_char = BLOCK_FULL
-        fractions = BLOCK_FRACTIONS
-        track_char = BLOCK_TRACK
-
-    filled_part = f"{c}{full_char * full_blocks}{fractions[rem_eighths]}{pal['RESET']}"
-    empty_part = f"{pal['TRACK']}{track_char * empty_blocks}{pal['RESET']}"
-    return f"{filled_part}{empty_part}"
+        total_eighths = int(round(ratio * width * 8))
+        full_blocks = total_eighths // 8
+        rem_eighths = total_eighths % 8
+        empty_blocks = max(0, width - full_blocks - (1 if rem_eighths > 0 else 0))
+        filled_part = f"{c}{BLOCK_FULL * full_blocks}{BLOCK_FRACTIONS[rem_eighths]}{pal['RESET']}"
+        empty_part = f"{pal['TRACK']}{BLOCK_TRACK * empty_blocks}{pal['RESET']}"
+        return f"{filled_part}{empty_part}"
 
 
 def visible_len(s):
