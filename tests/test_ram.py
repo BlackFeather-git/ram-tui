@@ -635,9 +635,10 @@ class UpdateManagerTests(unittest.TestCase):
 
             mock_stat_mode = mock.Mock(st_mode=0o777)
             real_stat = os.stat
+            real_tmp = os.path.realpath(tmp)
             with mock.patch.object(ram, "SYSTEM_OS", "Linux"):
                 with mock.patch("os.geteuid", return_value=0, create=True):
-                    with mock.patch("os.stat", side_effect=lambda path: mock_stat_mode if os.path.abspath(path) == os.path.abspath(tmp) else real_stat(path)):
+                    with mock.patch("os.stat", side_effect=lambda path: mock_stat_mode if os.path.realpath(path) == real_tmp else real_stat(path)):
                         with self.assertRaises(PermissionError) as ctx:
                             ram.UpdateManager._resolve_target(target_bin)
                         self.assertIn("refusing to update binary in insecure world-writable directory", str(ctx.exception))
