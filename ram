@@ -1815,7 +1815,7 @@ def parse_arguments(args=None):
         prog="ram",
         description=f"ram-tui v{__version__} - Minimalist real-time terminal memory monitor for Linux, macOS & Windows"
     )
-    parser.add_argument("-r", "--rate", type=int, default=100, help="Refresh interval in milliseconds (20–2000, default: 100)")
+    parser.add_argument("-r", "--rate", type=int, default=50, help="Refresh interval in milliseconds (20–2000, default: 50)")
     parser.add_argument("-n", "--count", type=int, default=8, help="Number of top processes (1–10000, default: 8)")
     parser.add_argument("-1", "--once", action="store_true", help="Output one snapshot and exit")
     parser.add_argument("--json", action="store_true", help="Output one JSON snapshot and exit")
