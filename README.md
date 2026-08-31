@@ -51,11 +51,16 @@ irm https://raw.githubusercontent.com/BlackFeather-git/ram-tui/main/install.ps1 
 scoop install https://raw.githubusercontent.com/BlackFeather-git/ram-tui/main/packaging/scoop/ram.json
 ```
 
-### Arch Linux (AUR)
+### Arch Linux
+*Note: Direct AUR indexing is pending upstream Arch Linux registration reopening. In the meantime, install using the one-liner or build directly with `makepkg`:*
+
 ```bash
-yay -S ram-tui
-# or
-paru -S ram-tui
+# Option 1: Quick Install
+curl -sSL https://raw.githubusercontent.com/BlackFeather-git/ram-tui/main/install.sh | bash
+
+# Option 2: Build from included PKGBUILD
+git clone https://github.com/BlackFeather-git/ram-tui.git
+cd ram-tui && makepkg -si
 ```
 
 ### Manual Installation (Any OS)
