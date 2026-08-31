@@ -53,13 +53,34 @@ BIDI_CHARS = set("\u200e\u200f\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u
 # Unicode Cell Width & Display Arithmetic (C-001 / C-002)
 # ---------------------------------------------------------------------------
 
+_WIDTH_CACHE = {}
+_WIDTH_CACHE_MAX = 8192
+
+
 def char_cell_width(ch):
-    """Calculates terminal column display width for a single character or grapheme."""
-    if ch in ("\u200d", "\u200b", "\ufeff") or unicodedata.combining(ch) or unicodedata.category(ch) in ("Cc", "Cf", "Cs"):
+    """Calculates terminal column display width for a single character or grapheme with bounded cache."""
+    # Fast path for standard printable ASCII (32 to 126)
+    code = ord(ch)
+    if 32 <= code <= 126:
+        return 1
+    if code < 32 or code == 127:
         return 0
-    if unicodedata.east_asian_width(ch) in ("W", "F"):
-        return 2
-    return 1
+
+    cached = _WIDTH_CACHE.get(ch)
+    if cached is not None:
+        return cached
+
+    if ch in ("\u200d", "\u200b", "\ufeff") or unicodedata.combining(ch) or unicodedata.category(ch) in ("Cc", "Cf", "Cs"):
+        w = 0
+    elif unicodedata.east_asian_width(ch) in ("W", "F"):
+        w = 2
+    else:
+        w = 1
+
+    if len(_WIDTH_CACHE) >= _WIDTH_CACHE_MAX:
+        _WIDTH_CACHE.clear()
+    _WIDTH_CACHE[ch] = w
+    return w
 
 
 def visible_cell_width(s):
@@ -1957,7 +1978,7 @@ def main():
                     update_notice=update_notice
                 )
                 try:
-                    sys.stdout.write(f"\033[H\033[2J{output}")
+                    sys.stdout.write(f"\033[H{output}\033[J")
                     sys.stdout.flush()
                 except BrokenPipeError:
                     break
@@ -2015,7 +2036,7 @@ def main():
                     update_notice=update_notice
                 )
                 try:
-                    sys.stdout.write(f"\033[H\033[2J{output}")
+                    sys.stdout.write(f"\033[H{output}\033[J")
                     sys.stdout.flush()
                 except BrokenPipeError:
                     break
