@@ -356,8 +356,10 @@ class UpdateManagerTests(unittest.TestCase):
             'print("malicious or invalid source")\n'
         ).encode("utf-8")
 
+        import hashlib
+        fake_sha = hashlib.sha256(fake_source).hexdigest()
         with self.assertRaises(ValueError) as ctx:
-            ram.UpdateManager._validate_source(fake_source, "0.6.0", filename="test")
+            ram.UpdateManager._validate_source(fake_source, "0.6.0", expected_sha256=fake_sha, filename="test")
         self.assertIn("module-level __version__", str(ctx.exception))
 
     def test_sha256_cryptographic_verification(self):
@@ -430,6 +432,86 @@ class UpdateManagerTests(unittest.TestCase):
             lock3 = manager2._acquire_process_lock()
             self.assertIsNotNone(lock3)
             manager2._release_process_lock(lock3)
+
+    def test_sha_digest_strictly_enforced(self):
+        source = b"#!/usr/bin/env python3\n__version__ = '0.6.0'\nif __name__ == '__main__': pass\n"
+
+        # Missing SHA digest
+        with self.assertRaises(ValueError) as ctx:
+            ram.UpdateManager._validate_source(source, "0.6.0", expected_sha256=None)
+        self.assertIn("missing cryptographic SHA-256", str(ctx.exception))
+
+        # Malformed / short SHA digest
+        with self.assertRaises(ValueError) as ctx:
+            ram.UpdateManager._validate_source(source, "0.6.0", expected_sha256="abc123")
+        self.assertIn("invalid or missing cryptographic SHA-256", str(ctx.exception))
+
+        # Non-hex SHA digest
+        with self.assertRaises(ValueError) as ctx:
+            ram.UpdateManager._validate_source(source, "0.6.0", expected_sha256="g" * 64)
+        self.assertIn("invalid or missing cryptographic SHA-256", str(ctx.exception))
+
+    def test_source_size_boundaries(self):
+        valid_header = b"#!/usr/bin/env python3\n__version__ = '0.6.0'\nif __name__ == '__main__': pass\n"
+        exact_2mb = valid_header + b"# " + (b"A" * (2 * 1024 * 1024 - len(valid_header) - 3)) + b"\n"
+        self.assertEqual(len(exact_2mb), 2 * 1024 * 1024)
+
+        import hashlib
+        exact_sha = hashlib.sha256(exact_2mb).hexdigest()
+        # Exactly 2 MiB -> Passes
+        ram.UpdateManager._validate_source(exact_2mb, "0.6.0", expected_sha256=exact_sha)
+
+        # 2 MiB + 1 byte -> Rejected
+        oversized = exact_2mb + b"X"
+        oversized_sha = hashlib.sha256(oversized).hexdigest()
+        with self.assertRaises(ValueError) as ctx:
+            ram.UpdateManager._validate_source(oversized, "0.6.0", expected_sha256=oversized_sha)
+        self.assertIn("exceeds safety limit", str(ctx.exception))
+
+    def test_non_ram_binary_target_rejection(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            unrelated_binary = os.path.join(tmp, "ls")
+            with open(unrelated_binary, "w") as f:
+                f.write("#!/bin/bash\necho unrelated\n")
+
+            with self.assertRaises(ValueError) as ctx:
+                ram.UpdateManager._resolve_target(unrelated_binary)
+            self.assertIn("target does not appear to be a ram-tui installation", str(ctx.exception))
+
+    def test_toctou_symlink_swap_rejection(self):
+        manager = ram.UpdateManager("0.5.3")
+        with tempfile.TemporaryDirectory() as tmp:
+            target = os.path.join(tmp, "ram")
+            real_file = os.path.join(tmp, "real_ram")
+            with open(real_file, "w") as f:
+                f.write("#!/usr/bin/env python3\n__version__ = '0.5.3'\nif __name__ == '__main__': pass\n")
+
+            os.symlink(real_file, target)
+
+            # Atomic replace directly detects if target is a symlink and rejects TOCTOU swap
+            with self.assertRaises(PermissionError) as ctx:
+                manager._atomic_replace(b"new_data", target)
+            self.assertIn("TOCTOU violation", str(ctx.exception))
+
+    def test_lock_owner_liveness(self):
+        # Current process is alive
+        self.assertTrue(ram._is_pid_alive(os.getpid()))
+        # PID 999999 is definitely dead/non-existent
+        self.assertFalse(ram._is_pid_alive(999999))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_path = os.path.join(tmp, "cache.json")
+            lock_path = cache_path + ".lock"
+
+            # Create lock owned by dead PID
+            with open(lock_path, "w") as f:
+                f.write("999999 1000.0\n")
+
+            manager = ram.UpdateManager("0.5.3", cache_path=cache_path)
+            # Manager should detect dead owner and safely acquire
+            acquired = manager._acquire_process_lock()
+            self.assertIsNotNone(acquired)
+            manager._release_process_lock(acquired)
 
     def test_cli_update_flags(self):
         args = ram.parse_arguments(["--update", "--force"])

@@ -1137,6 +1137,32 @@ def _has_ast_main_block(tree):
     return False
 
 
+def _is_pid_alive(pid):
+    """Check if a process ID is actively running on the local system."""
+    if not isinstance(pid, int) or pid <= 0:
+        return False
+    if SYSTEM_OS == "Windows":
+        try:
+            INVALID_HANDLE = ctypes.c_void_p(-1).value
+            h = k32.OpenProcess(0x0400 | 0x0010, False, pid)
+            if h and h != INVALID_HANDLE:
+                k32.CloseHandle(h)
+                return True
+            return False
+        except Exception:
+            return False
+    else:
+        try:
+            os.kill(pid, 0)
+            return True
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        except OSError:
+            return False
+
+
 class UpdateManager:
     """Offline-first update checker and cryptographic in-place updater."""
 
@@ -1309,12 +1335,13 @@ class UpdateManager:
         try:
             raw = self._request(url, user_agent, max_size=4096)
             text = raw.decode("utf-8").strip()
-            match = re.search(r"([0-9a-fA-F]{64})", text)
+            # Strict 64-character hexadecimal digest validation
+            match = re.search(r"\b([0-9a-fA-F]{64})\b", text)
             if match:
                 return match.group(1).lower()
-        except Exception:
-            pass
-        return None
+            raise ValueError(f"malformed SHA-256 checksum asset for release v{latest_version}")
+        except Exception as exc:
+            raise ValueError(f"failed to retrieve cryptographic SHA-256 release digest: {exc}") from exc
 
     @staticmethod
     def _validate_source(data, expected_version, expected_sha256=None, filename="ram"):
@@ -1323,15 +1350,17 @@ class UpdateManager:
         if not data:
             raise ValueError("downloaded source is empty")
 
-        # 1. Cryptographic SHA-256 verification
-        if expected_sha256:
-            computed_sha = hashlib.sha256(data).hexdigest().lower().strip()
-            clean_expected = expected_sha256.lower().strip()
-            if computed_sha != clean_expected:
-                raise ValueError(
-                    f"cryptographic integrity verification failed (SHA-256 mismatch): "
-                    f"expected {clean_expected[:12]}..., computed {computed_sha[:12]}..."
-                )
+        # 1. Strict Cryptographic SHA-256 integrity verification
+        if not expected_sha256 or len(expected_sha256) != 64 or not all(c in "0123456789abcdefABCDEF" for c in expected_sha256):
+            raise ValueError("invalid or missing cryptographic SHA-256 release digest")
+
+        computed_sha = hashlib.sha256(data).hexdigest().lower().strip()
+        clean_expected = expected_sha256.lower().strip()
+        if computed_sha != clean_expected:
+            raise ValueError(
+                f"cryptographic integrity verification failed (SHA-256 mismatch): "
+                f"expected {clean_expected[:12]}..., computed {computed_sha[:12]}..."
+            )
 
         # 2. UTF-8 decoding
         try:
@@ -1375,6 +1404,26 @@ class UpdateManager:
         real_target = os.path.realpath(abs_target)
         if not os.path.isfile(real_target):
             raise FileNotFoundError(f"installed executable not found: {real_target}")
+
+        # Non-ram binary overwrite protection: verify target is actually ram-tui
+        try:
+            with open(real_target, "r", encoding="utf-8", errors="ignore") as f:
+                header = f.read(2048)
+            if "ram-tui" not in header and "__version__" not in header:
+                raise ValueError(f"target does not appear to be a ram-tui installation: {real_target}")
+        except (OSError, ValueError) as exc:
+            raise ValueError(f"target verification failed: {exc}") from exc
+
+        # Unix privilege safety: prevent root updates in insecure world-writable directories (e.g. /tmp)
+        if SYSTEM_OS != "Windows" and hasattr(os, "geteuid") and os.geteuid() == 0:
+            parent_dir = os.path.dirname(real_target) or "."
+            try:
+                st = os.stat(parent_dir)
+                if (st.st_mode & 0o002) and not (st.st_mode & 0o1000):
+                    raise PermissionError(f"refusing to update binary in insecure world-writable directory: {parent_dir}")
+            except OSError:
+                pass
+
         return real_target, is_symlink, abs_target
 
     def _atomic_replace(self, data, target_path):
@@ -1383,6 +1432,10 @@ class UpdateManager:
             raise PermissionError(
                 f"directory is not writable: {target_dir}"
             )
+
+        # TOCTOU guard: ensure target has not been replaced with a symlink right before replacement
+        if os.path.islink(target_path):
+            raise PermissionError(f"TOCTOU violation: target file was replaced with a symlink: {target_path}")
 
         temp_name = None
         try:
@@ -1400,6 +1453,11 @@ class UpdateManager:
 
             if SYSTEM_OS != "Windows":
                 os.chmod(temp_name, 0o755)
+
+            # Re-verify target immediately before atomic rename
+            if os.path.islink(target_path):
+                raise PermissionError(f"TOCTOU violation: target file was swapped for a symlink: {target_path}")
+
             os.replace(temp_name, target_path)
             temp_name = None
         finally:
@@ -1416,12 +1474,19 @@ class UpdateManager:
             os.makedirs(cache_dir, mode=0o700, exist_ok=True)
             if os.path.exists(lock_path):
                 try:
-                    if time.time() - os.path.getmtime(lock_path) > 30.0:
-                        os.unlink(lock_path)
-                except OSError:
+                    with open(lock_path, "r", encoding="utf-8") as f:
+                        content = f.read().strip().split()
+                    if content and content[0].isdigit():
+                        owner_pid = int(content[0])
+                        # Only evict lock if owner process is demonstrably dead
+                        if not _is_pid_alive(owner_pid):
+                            os.unlink(lock_path)
+                        else:
+                            return None  # Owner is still active
+                except (OSError, ValueError):
                     pass
             fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-            os.write(fd, f"{os.getpid()} {time.time()}".encode("utf-8"))
+            os.write(fd, f"{os.getpid()} {time.time()}\n".encode("utf-8"))
             os.close(fd)
             return lock_path
         except (OSError, Exception):
@@ -1498,11 +1563,10 @@ class UpdateManager:
             if is_symlink:
                 msg += f" (symlink target: {real_target})"
             return True, msg
-        except PermissionError:
+        except PermissionError as exc:
             return (
                 False,
-                "ram-tui could not replace the installed executable because "
-                f"the target directory is not writable: {target_path or sys.argv[0]}.\n"
+                f"ram-tui update permission error: {exc}.\n"
                 "Try 'sudo ram --update' for a system install, or update through your package manager.",
             )
         except OSError as exc:
