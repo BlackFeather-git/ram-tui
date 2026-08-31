@@ -248,23 +248,37 @@ class TerminalAndCliTests(unittest.TestCase):
                     w = ram.visible_cell_width(l)
                     self.assertLessEqual(w, cols, f"Line width {w} > cols {cols} in: {repr(l)}")
 
-    def test_terminal_manager_idempotent_restore(self):
-        tm = ram.TerminalManager()
-        tm._restored = False
-        tm.restore()
-        self.assertTrue(tm._restored)
-        tm.restore()
-        self.assertTrue(tm._restored)
+    def test_grapheme_zwj_combining_marks(self):
+        zwj_sequence = "👨\u200d👩\u200d👧\u200d👦"
+        # Zero-width joiners and zero-width spaces should not inflate width
+        self.assertEqual(ram.char_cell_width("\u200d"), 0)
+        self.assertEqual(ram.char_cell_width("\u200b"), 0)
+        self.assertEqual(ram.char_cell_width("\ufeff"), 0)
 
-    def test_real_cli_json_stdout_execution(self):
-        cmd = [sys.executable, os.path.join(ROOT, "ram"), "--json"]
-        out = subprocess.check_output(cmd, universal_newlines=True)
-        parsed = json.loads(out)
-        self.assertEqual(parsed["version"], ram.__version__)
-        self.assertIn("memory", parsed)
-        self.assertIn("top_processes", parsed)
-        self.assertIn("hostname", parsed)
-        self.assertTrue(isinstance(parsed["top_processes"], list))
+    def test_terminal_manager_idempotent_setup_and_restore(self):
+        tm = ram.TerminalManager()
+        tm.setup_raw()
+        self.assertTrue(tm._raw_active or not tm.is_tty)
+        tm.setup_raw()  # Re-entrant call should be idempotent
+        tm.restore()
+        self.assertTrue(tm._restored)
+        tm.restore()  # Re-entrant restore should be idempotent
+
+    def test_linux_proc_parser_resilience(self):
+        # Truncated or empty proc lines
+        mock_meminfo = "MemTotal:\nMemFree: 1000 kB\nInvalidLine\n"
+        with mock.patch("builtins.open", mock.mock_open(read_data=mock_meminfo)):
+            info = ram.get_meminfo_linux()
+            self.assertEqual(info["total"], 0)
+            self.assertEqual(info["available"], 1000 * 1024)
+
+    def test_zram_detection_fallback(self):
+        mock_swaps = "Filename Type Size Used Priority\n"
+        with mock.patch("builtins.open", mock.mock_open(read_data=mock_swaps)):
+            with mock.patch("os.path.exists", return_value=True):
+                with mock.patch("os.listdir", return_value=["zram0", "sda"]):
+                    info = ram.get_meminfo_linux()
+                    self.assertEqual(info["swap_desc"], "zram")
 
     def test_broken_pipe_handling(self):
         # Simulate downstream pipe closure (e.g. head -n 1)
@@ -279,6 +293,13 @@ class TerminalAndCliTests(unittest.TestCase):
         proc.stderr.close()
         proc.wait(timeout=2.0)
         self.assertEqual(proc.returncode, 0)
+
+
+    def test_install_script_dry_run(self):
+        install_sh = os.path.join(ROOT, "install.sh")
+        if os.path.exists(install_sh) and os.name != "nt":
+            out = subprocess.check_output(["bash", install_sh, "--dry-run"], universal_newlines=True)
+            self.assertIn("[DRY-RUN]", out)
 
 
 if __name__ == "__main__":

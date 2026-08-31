@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # ram-tui secure installer script
-# Installs executable and shell completions into user directories
+# Usage: ./install.sh [--dry-run] [--force]
 # ==============================================================================
 
 set -euo pipefail
@@ -12,7 +12,30 @@ BIN_DIR="${HOME}/.local/bin"
 TARGET="${BIN_DIR}/ram"
 BASE_URL="https://raw.githubusercontent.com/${REPO}/${BRANCH}"
 
+DRY_RUN=false
+FORCE=false
+
+for arg in "$@"; do
+    case "$arg" in
+        --dry-run) DRY_RUN=true ;;
+        --force) FORCE=true ;;
+        -h|--help)
+            echo "Usage: ./install.sh [--dry-run] [--force]"
+            echo "  --dry-run   Simulate installation without writing any files"
+            echo "  --force     Overwrite existing installation without prompting"
+            exit 0
+            ;;
+    esac
+done
+
 echo -e "\033[1;36m⚡ Installing ram-tui (branch: ${BRANCH})...\033[0m"
+
+if [ "$DRY_RUN" = true ]; then
+    echo -e "\033[1;33m[DRY-RUN] Target binary: ${TARGET}\033[0m"
+    echo -e "\033[1;33m[DRY-RUN] Would download: ${BASE_URL}/ram\033[0m"
+    echo -e "\033[1;33m[DRY-RUN] Would install shell completions to ~/.local/share/ and ~/.config/fish/\033[0m"
+    exit 0
+fi
 
 # 1. Ensure target binary directory exists
 mkdir -p "${BIN_DIR}"
@@ -66,14 +89,17 @@ if [ -d "${FISH_COMP_DIR}" ]; then
     curl -fsSL "${BASE_URL}/completions/ram.fish" -o "${FISH_COMP_DIR}/ram.fish" 2>/dev/null || true
 fi
 
-# 4. Non-destructive PATH check
+# 4. Comprehensive non-destructive PATH diagnostics
 case ":${PATH}:" in
     *":${BIN_DIR}:"*) ;;
     *)
         echo ""
         echo -e "\033[1;33m⚠️  Note: ${BIN_DIR} is not in your current PATH.\033[0m"
-        echo "   To make 'ram' available globally, add this to your ~/.bashrc or ~/.zshrc:"
-        echo -e "   \033[1mexport PATH=\"\$HOME/.local/bin:\$PATH\"\033[0m"
+        echo "   To make 'ram' globally executable, add ${BIN_DIR} to your shell profile:"
+        echo "   • Bash:  echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc"
+        echo "   • Zsh:   echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.zshrc"
+        echo "   • Fish:  fish_add_path ~/.local/bin"
+        echo "   • POSIX: echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.profile"
         ;;
 esac
 

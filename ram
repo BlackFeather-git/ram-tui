@@ -23,7 +23,7 @@ import heapq
 import unicodedata
 from datetime import datetime
 
-__version__ = "0.5.0-beta.7"
+__version__ = "0.5.0-beta.8"
 SYSTEM_OS = platform.system()
 
 PAGE_SIZE = 4096
@@ -48,8 +48,8 @@ BIDI_CHARS = set("\u200e\u200f\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u
 # ---------------------------------------------------------------------------
 
 def char_cell_width(ch):
-    """Calculates terminal column display width for a single character."""
-    if unicodedata.combining(ch) or unicodedata.category(ch) in ("Cc", "Cf", "Cs"):
+    """Calculates terminal column display width for a single character or grapheme."""
+    if ch in ("\u200d", "\u200b", "\ufeff") or unicodedata.combining(ch) or unicodedata.category(ch) in ("Cc", "Cf", "Cs"):
         return 0
     if unicodedata.east_asian_width(ch) in ("W", "F"):
         return 2
@@ -407,6 +407,7 @@ class TerminalManager:
         self.h_stdout = None
         self.orig_console_mode = None
         self._restored = False
+        self._raw_active = False
         self._alt_screen_active = False
 
         if self.is_tty:
@@ -432,31 +433,36 @@ class TerminalManager:
                 self.orig_termios = None
 
     def setup_raw(self):
-        if self.is_tty:
-            if SYSTEM_OS == "Windows":
-                try:
-                    if self.h_stdout is not None and self.orig_console_mode is not None:
-                        ctypes.windll.kernel32.SetConsoleMode(self.h_stdout, self.orig_console_mode | 7)
-                except Exception:
-                    pass
-            elif self.orig_termios and self.fd is not None:
-                try:
-                    import tty
-                    tty.setcbreak(self.fd)
-                except Exception:
-                    pass
+        if not self.is_tty or self._raw_active:
+            return
+        self._raw_active = True
+        self._restored = False
+
+        if SYSTEM_OS == "Windows":
             try:
-                # Switch to Alternate Screen Buffer, hide cursor, and clear screen
-                sys.stdout.write("\033[?1049h\033[?25l\033[H\033[2J")
-                sys.stdout.flush()
-                self._alt_screen_active = True
+                if self.h_stdout is not None and self.orig_console_mode is not None:
+                    ctypes.windll.kernel32.SetConsoleMode(self.h_stdout, self.orig_console_mode | 7)
             except Exception:
-                self._alt_screen_active = False
+                pass
+        elif self.orig_termios and self.fd is not None:
+            try:
+                import tty
+                tty.setcbreak(self.fd)
+            except Exception:
+                pass
+        try:
+            # Switch to Alternate Screen Buffer, hide cursor, and clear screen
+            sys.stdout.write("\033[?1049h\033[?25l\033[H\033[2J")
+            sys.stdout.flush()
+            self._alt_screen_active = True
+        except Exception:
+            self._alt_screen_active = False
 
     def restore(self):
         if self._restored:
             return
         self._restored = True
+        self._raw_active = False
 
         if self.is_tty:
             try:
@@ -467,6 +473,7 @@ class TerminalManager:
                 sys.stdout.flush()
             except Exception:
                 pass
+            self._alt_screen_active = False
 
             if SYSTEM_OS == "Windows":
                 if self.h_stdout is not None and self.orig_console_mode is not None:
@@ -528,22 +535,29 @@ def get_meminfo_linux():
     try:
         with open("/proc/meminfo", "r") as f:
             for line in f:
-                parts = line.split(":")
+                line = line.strip()
+                if not line:
+                    continue
+                parts = line.split(":", maxsplit=1)
                 if len(parts) == 2:
                     key = parts[0].strip()
-                    val_str = parts[1].strip().split()[0]
-                    info[key] = int(val_str) * 1024
+                    val_parts = parts[1].strip().split()
+                    if val_parts:
+                        try:
+                            info[key] = int(val_parts[0]) * 1024
+                        except ValueError:
+                            pass
     except Exception:
         return {"total": 0, "available": 0, "used": 0, "commit_as": 0, "commit_limit": 0, "cached": 0, "swap_used": 0, "swap_total": 0, "swap_desc": "unknown", "valid": False}
 
-    total = info.get("MemTotal", 0)
-    available = info.get("MemAvailable", info.get("MemFree", 0))
+    total = max(0, info.get("MemTotal", 0))
+    available = max(0, info.get("MemAvailable", info.get("MemFree", 0)))
     used = max(0, total - available)
-    commit_as = info.get("Committed_AS", 0)
-    commit_limit = info.get("CommitLimit", total)
-    cached = info.get("Cached", 0) + info.get("Buffers", 0) + info.get("SReclaimable", 0)
-    swap_total = info.get("SwapTotal", 0)
-    swap_free = info.get("SwapFree", 0)
+    commit_as = max(0, info.get("Committed_AS", 0))
+    commit_limit = max(0, info.get("CommitLimit", total))
+    cached = max(0, info.get("Cached", 0) + info.get("Buffers", 0) + info.get("SReclaimable", 0))
+    swap_total = max(0, info.get("SwapTotal", 0))
+    swap_free = max(0, info.get("SwapFree", 0))
     swap_used = max(0, swap_total - swap_free)
 
     has_zram = False
@@ -551,6 +565,9 @@ def get_meminfo_linux():
     try:
         with open("/proc/swaps", "r") as f:
             for line in f.readlines()[1:]:
+                line = line.strip()
+                if not line:
+                    continue
                 parts = line.split()
                 if parts:
                     if "zram" in parts[0]:
@@ -559,6 +576,13 @@ def get_meminfo_linux():
                         has_disk = True
     except Exception:
         pass
+
+    if not has_zram:
+        try:
+            if os.path.exists("/sys/block") and any(p.startswith("zram") for p in os.listdir("/sys/block")):
+                has_zram = True
+        except Exception:
+            pass
 
     if has_zram and has_disk:
         swap_desc = "zram + disk"
@@ -621,8 +645,8 @@ def get_meminfo_windows():
         if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat)):
             return {"total": 0, "available": 0, "used": 0, "commit_as": None, "commit_limit": None, "cached": None, "swap_used": None, "swap_total": 0, "swap_desc": "unknown", "valid": False}
 
-        total = stat.ullTotalPhys
-        available = stat.ullAvailPhys
+        total = max(0, int(stat.ullTotalPhys))
+        available = max(0, int(stat.ullAvailPhys))
         used = max(0, total - available)
 
         commit_as = None
@@ -637,15 +661,15 @@ def get_meminfo_windows():
                 psapi_func.restype = ctypes.c_int
                 if psapi_func(ctypes.byref(perf), perf.cb):
                     page_size = perf.PageSize or 4096
-                    commit_as = perf.CommitTotal * page_size
-                    commit_limit = perf.CommitLimit * page_size
-                    cached = perf.SystemCache * page_size
+                    commit_as = max(0, int(perf.CommitTotal * page_size))
+                    commit_limit = max(0, int(perf.CommitLimit * page_size))
+                    cached = max(0, int(perf.SystemCache * page_size))
         except Exception:
             commit_as = None
             commit_limit = None
             cached = None
 
-        swap_total = max(0, stat.ullTotalPageFile - total)
+        swap_total = max(0, int(stat.ullTotalPageFile) - total)
         swap_desc = "pagefile"
 
         return {
@@ -667,32 +691,35 @@ def get_meminfo_windows():
 def get_meminfo_darwin():
     try:
         total_str = run_command(["sysctl", "-n", "hw.memsize"], timeout=1.0).strip()
-        total = int(total_str)
+        total = max(0, int(total_str))
 
         vm_out = run_command(["vm_stat"], timeout=1.0)
         page_size = 4096
         free_pages = active_pages = inactive_pages = speculative_pages = wired_pages = compressed_pages = 0
         for line in vm_out.splitlines():
+            line = line.strip()
+            if not line:
+                continue
             if "page size of" in line:
                 m = re.search(r"(\d+)\s*bytes", line)
                 if m:
-                    page_size = int(m.group(1))
+                    page_size = max(1, int(m.group(1)))
             elif "Pages free:" in line:
-                free_pages = int(re.sub(r"[^\d]", "", line.split(":")[1]))
+                free_pages = max(0, int(re.sub(r"[^\d]", "", line.split(":")[1]) or 0))
             elif "Pages active:" in line:
-                active_pages = int(re.sub(r"[^\d]", "", line.split(":")[1]))
+                active_pages = max(0, int(re.sub(r"[^\d]", "", line.split(":")[1]) or 0))
             elif "Pages inactive:" in line:
-                inactive_pages = int(re.sub(r"[^\d]", "", line.split(":")[1]))
+                inactive_pages = max(0, int(re.sub(r"[^\d]", "", line.split(":")[1]) or 0))
             elif "Pages speculative:" in line:
-                speculative_pages = int(re.sub(r"[^\d]", "", line.split(":")[1]))
+                speculative_pages = max(0, int(re.sub(r"[^\d]", "", line.split(":")[1]) or 0))
             elif "Pages wired down:" in line:
-                wired_pages = int(re.sub(r"[^\d]", "", line.split(":")[1]))
+                wired_pages = max(0, int(re.sub(r"[^\d]", "", line.split(":")[1]) or 0))
             elif "Pages occupied by compressor:" in line:
-                compressed_pages = int(re.sub(r"[^\d]", "", line.split(":")[1]))
+                compressed_pages = max(0, int(re.sub(r"[^\d]", "", line.split(":")[1]) or 0))
 
-        available = (free_pages + inactive_pages + speculative_pages) * page_size
+        available = max(0, (free_pages + inactive_pages + speculative_pages) * page_size)
         used = max(0, total - available)
-        cached = (inactive_pages + speculative_pages) * page_size
+        cached = max(0, (inactive_pages + speculative_pages) * page_size)
 
         swap_used = swap_total = 0
         try:
@@ -701,7 +728,7 @@ def get_meminfo_darwin():
             units = {"K": 1024, "M": 1024**2, "G": 1024**3, "T": 1024**4, "P": 1024**5}
             for k, val, unit in matches:
                 mult = units.get(unit.upper(), 1024**2)
-                bytes_num = int(float(val) * mult)
+                bytes_num = max(0, int(float(val) * mult))
                 if k.lower() == "total":
                     swap_total = bytes_num
                 elif k.lower() == "used":
@@ -742,7 +769,7 @@ def get_meminfo():
 def get_linux_proc_starttime(pid):
     try:
         with open(f"/proc/{pid}/stat", "r") as f:
-            content = f.read()
+            content = f.read().strip()
         rparen = content.rfind(")")
         if rparen != -1:
             fields = content[rparen + 2:].split()
@@ -774,7 +801,10 @@ def get_processes_linux(group_by_name=True, limit=8):
             valid_keys.add(cache_key)
 
             with open(f"/proc/{pid}/statm", "r") as f:
-                fields = f.read().split()
+                content = f.read().strip()
+                if not content:
+                    continue
+                fields = content.split(maxsplit=2)
                 if len(fields) < 2:
                     continue
                 rss_bytes = int(fields[1]) * PAGE_SIZE
@@ -888,12 +918,18 @@ def get_processes_windows(group_by_name=True, limit=8):
                                         else:
                                             procs[pid] = {"name": f"{name} [{pid}]", "rss": rss_bytes, "count": 1, "pid": pid}
                             finally:
-                                k32.CloseHandle(h_proc)
+                                try:
+                                    k32.CloseHandle(h_proc)
+                                except Exception:
+                                    pass
 
                     if not k32.Process32NextW(h_snap, ctypes.byref(pe)):
                         break
         finally:
-            k32.CloseHandle(h_snap)
+            try:
+                k32.CloseHandle(h_snap)
+            except Exception:
+                pass
 
     except Exception:
         pass
@@ -906,7 +942,10 @@ def get_processes_darwin(group_by_name=True, limit=8):
     try:
         output = run_command(["ps", "-axo", "pid,rss,comm"], timeout=1.0)
         for line in output.splitlines()[1:]:
-            parts = line.strip().split(maxsplit=2)
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split(maxsplit=2)
             if len(parts) == 3 and parts[1].isdigit():
                 pid = int(parts[0])
                 rss_bytes = int(parts[1]) * 1024
@@ -1162,6 +1201,12 @@ def parse_arguments(args=None):
 
 
 def main():
+    if hasattr(signal, "SIGPIPE"):
+        try:
+            signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+        except Exception:
+            pass
+
     args = parse_arguments()
     term = TerminalManager()
 

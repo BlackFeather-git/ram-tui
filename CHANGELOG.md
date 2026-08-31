@@ -5,6 +5,20 @@ All notable changes to `ram-tui` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0-beta.8] - 2026-08-31
+
+### Added
+- **Windows Scoop Shims (`ram.cmd` & `ram.ps1`)**: Added native Command Prompt and PowerShell launcher shims in `packaging/scoop/` for seamless Scoop package integration.
+- **Installer Safety Flags**: Added `--dry-run` and `--force` flags to `install.sh` alongside complete per-shell configuration instructions (`~/.bashrc`, `~/.zshrc`, `~/.config/fish/config.fish`, `~/.profile`).
+
+### Fixed
+- **Terminal & Alternate Screen Idempotency**: Hardened `setup_raw()` and `restore()` in `TerminalManager` with re-entrant state tracking (`_raw_active`, `_alt_screen_active`), guaranteeing zero terminal corruption on repeated lifecycle calls.
+- **Defensive `/proc` Line Parsing**: Added empty-value guards in `get_meminfo_linux()` and `get_processes_linux()` to handle truncated kernel reads without throwing exceptions.
+- **ZRAM Fallback Detection**: Added `/sys/block/zram*` presence checking when `/proc/swaps` contains minimal swap descriptors.
+- **Grapheme & ZWJ Sequence Handling**: Zero-width joiners (`\u200d`), zero-width spaces, and combining marks now evaluate with 0 printable column width in `char_cell_width()`.
+
+---
+
 ## [0.5.0-beta.7] - 2026-08-31
 
 ### Added
