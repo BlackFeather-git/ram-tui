@@ -1,4 +1,4 @@
-# Maintainer: Raven (BlackFeather) <https://github.com/BlackFeather-git>
+# Maintainer: Raven <blackfeatheractual@proton.me>
 pkgname=ram-tui
 pkgver=0.5.2
 pkgrel=1

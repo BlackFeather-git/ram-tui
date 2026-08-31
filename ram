@@ -2,7 +2,8 @@
 """
 ram-tui - Lightweight real-time terminal memory monitor for Linux, macOS & Windows.
 
-Author: Raven (BlackFeather) https://github.com/BlackFeather-git/ram-tui
+Author: Raven (BlackFeather) <blackfeatheractual@proton.me>
+Website: https://github.com/BlackFeather-git/ram-tui
 License: MIT
 """
 

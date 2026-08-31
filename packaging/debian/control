@@ -1,7 +1,7 @@
 Source: ram-tui
 Section: utils
 Priority: optional
-Maintainer: Raven <blackfeather.git@gmail.com>
+Maintainer: Raven <blackfeatheractual@proton.me>
 Build-Depends: debhelper-compat (= 13)
 Standards-Version: 4.6.2
 Homepage: https://github.com/BlackFeather-git/ram-tui
