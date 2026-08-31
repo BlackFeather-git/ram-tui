@@ -84,6 +84,17 @@ def truncate_plain_cells(text, max_cells, ellipsis="~"):
     return "".join(result) + ellipsis
 
 
+def pad_plain_cells(text, target_cells, align="left"):
+    """Pads a string with spaces to reach target_cells terminal column width."""
+    if target_cells <= 0:
+        return ""
+    cur_w = visible_cell_width(text)
+    if cur_w >= target_cells:
+        return text
+    pad = " " * (target_cells - cur_w)
+    return (text + pad) if align == "left" else (pad + text)
+
+
 def clamp_line_to_cols(line, max_cols):
     """Ensures a line (including ANSI codes) never exceeds max_cols display cells."""
     if max_cols <= 0:
@@ -1130,23 +1141,27 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
             if rows >= 24:
                 lines.append("")
             mode_label = "RESIDENT SET" if group_procs else "PID"
-            lines.append(clamp_line_to_cols(f"{m}PROCESS ({mode_label})        RSS        USAGE                SHARE{r}", cols))
+            name_w = max(6, min(cols - 30, 20))
+            p_bar_w = max(4, min(cols - name_w - 24, 16))
 
-            name_w = max(6, min(cols - 26, 20))
-            p_bar_w = max(4, min(cols - name_w - 20, 16))
+            hdr_name = pad_plain_cells(f"PROCESS ({mode_label})", name_w, align="left")
+            hdr_line = f"{m}{hdr_name}   {'RSS':>9}   {'USAGE':<{p_bar_w}}   {'SHARE':>6}{r}"
+            lines.append(clamp_line_to_cols(hdr_line, cols))
 
             for p in visible_procs:
                 count_str = f" ({p['count']})" if p.get("count", 1) > 1 else ""
                 name_full = f"{p['name']}{count_str}"
                 name_disp = truncate_plain_cells(name_full, name_w)
+                name_padded = pad_plain_cells(name_disp, name_w, align="left")
 
-                rss_str = format_bytes(p["rss"], precision=1).rjust(7)
+                rss_str = format_bytes(p["rss"], precision=1).rjust(9)
                 p_pct = percentage(p["rss"], total)
+                p_pct_str = f"{p_pct:>5.1f}%"
                 p_color = g if p_pct < 40 else (w if p_pct < 70 else crit)
                 p_ratio = p["rss"] / max(1, procs[0]["rss"])
                 p_meter = render_meter_track(p_ratio, width=p_bar_w, pal=pal, symbol=symbol, color=p_color)
 
-                p_line = f"{t}{name_disp:<{name_w}}{r}   {g}{rss_str}{r}   {p_meter}   {m}{p_pct:>5.1f}%{r}"
+                p_line = f"{t}{name_padded}{r}   {g}{rss_str}{r}   {p_meter}   {m}{p_pct_str:>6}{r}"
                 lines.append(clamp_line_to_cols(p_line, cols))
 
     # Footer & Help Overlay (C-003)
