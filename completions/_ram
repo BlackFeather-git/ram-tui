@@ -36,6 +36,9 @@ _ram() {
         '--tiny[Tiny mode: single-line raw output for status bars]' \
         '--theme[Color theme]:theme:_describe "theme" themes' \
         '--symbol[Meter graph style]:symbol:_describe "symbol" symbols' \
+        '--update[Update ram-tui to latest release in-place and exit]' \
+        '--check-update[Check for updates and exit]' \
+        '--no-update-check[Disable background update check]' \
         '(-h --help)'{-h,--help}'[Show help and exit]' \
         '(-v --version)'{-v,--version}'[Show version and exit]'
 }

@@ -5,6 +5,15 @@ All notable changes to `ram-tui` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0-beta.1] - 2026-08-31
+
+### Added
+- **In-Place Self-Updater (`ram --update`)**: Added native self-update command that queries GitHub Releases, verifies download checksum and Python bytecode compilation, validates semantic version declarations, and atomically replaces the installed executable.
+- **Offline-First Background Update Checker**: Added non-blocking daemon thread check with configurable 12-hour default cache interval (`RAM_UPDATE_INTERVAL` supporting suffixes like `30m`, `1h`, `12h`), quiet footer update notifications, and `--no-update-check` suppression.
+- **Update Inspection CLI (`ram --check-update`)**: Added instant version check command reporting update status without modifying the running installation.
+
+---
+
 ## [0.5.3] - 2026-08-31
 
 ### Fixed

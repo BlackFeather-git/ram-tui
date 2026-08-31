@@ -2,6 +2,7 @@ import io
 import json
 import os
 import sys
+import tempfile
 import unittest
 import subprocess
 from unittest import mock
@@ -300,6 +301,126 @@ class TerminalAndCliTests(unittest.TestCase):
         if os.path.exists(install_sh) and os.name != "nt":
             out = subprocess.check_output(["bash", install_sh, "--dry-run"], universal_newlines=True)
             self.assertIn("[DRY-RUN]", out)
+
+
+class UpdateManagerTests(unittest.TestCase):
+    def test_version_comparison(self):
+        self.assertTrue(ram.is_newer_version("0.5.3", "0.6.0"))
+        self.assertFalse(ram.is_newer_version("0.6.0", "0.5.3"))
+        self.assertFalse(ram.is_newer_version("0.6.0", "0.6.0"))
+        self.assertTrue(ram.is_newer_version("0.6.0-beta.1", "0.6.0"))
+        self.assertFalse(ram.is_newer_version("0.6.0", "0.6.0-beta.1"))
+
+    def test_interval_parsing(self):
+        self.assertEqual(ram.parse_update_interval("30m"), 1800)
+        self.assertEqual(ram.parse_update_interval("1h"), 3600)
+        self.assertEqual(ram.parse_update_interval("12h"), 43200)
+        self.assertEqual(ram.parse_update_interval("900"), 900)
+        with self.assertRaises(ValueError):
+            ram.parse_update_interval("banana")
+
+    def test_cache_reading_and_expiration(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_path = os.path.join(tmp, "update_check.json")
+            with open(cache_path, "w", encoding="utf-8") as handle:
+                json.dump(
+                    {
+                        "last_checked": 1000,
+                        "latest_version": "0.6.0",
+                        "has_update": True,
+                    },
+                    handle,
+                )
+
+            manager = ram.UpdateManager(
+                "0.5.3",
+                cache_path=cache_path,
+                interval=3600,
+            )
+            self.assertFalse(manager.cache_expired(now=2000))
+            self.assertTrue(manager.cache_expired(now=5001))
+            self.assertEqual(manager.get_notification(), (
+                "[Update available: v0.5.3 -> v0.6.0 | run 'ram --update']"
+            ))
+
+    def test_mocked_update_download_and_atomic_replacement(self):
+        source = (
+            "#!/usr/bin/env python3\n"
+            "__version__ = \"0.6.0\"\n"
+            "if __name__ == \"__main__\":\n"
+            "    pass\n"
+        ).encode("utf-8")
+
+        class FakeResponse:
+            def __init__(self, payload):
+                self.payload = payload
+
+            def read(self, size=-1):
+                if size == -1:
+                    payload, self.payload = self.payload, b""
+                    return payload
+                payload, self.payload = self.payload[:size], self.payload[size:]
+                return payload
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        with tempfile.TemporaryDirectory() as tmp:
+            target = os.path.join(tmp, "ram")
+            with open(target, "wb") as handle:
+                handle.write(
+                    b"#!/usr/bin/env python3\n"
+                    b"__version__ = \"0.5.3\"\n"
+                    b"if __name__ == \"__main__\":\n"
+                    b"    pass\n"
+                )
+
+            cache_path = os.path.join(tmp, "cache.json")
+
+            def fake_urlopen(request, timeout=1.0):
+                url = request.full_url
+                if url.endswith("/releases/latest"):
+                    return FakeResponse(b'{"tag_name":"v0.6.0"}')
+                return FakeResponse(source)
+
+            with mock.patch.object(ram.urllib.request, "urlopen", side_effect=fake_urlopen):
+                manager = ram.UpdateManager(
+                    "0.5.3",
+                    cache_path=cache_path,
+                    interval=3600,
+                )
+                ok, message = manager.perform_update(target_path=target)
+
+            self.assertTrue(ok)
+            self.assertIn("updated successfully", message)
+            with open(target, "rb") as handle:
+                updated = handle.read()
+            self.assertEqual(updated, source)
+
+    def test_no_update_check_suppresses_background_thread(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            manager = ram.UpdateManager(
+                "0.5.3",
+                disabled=True,
+                cache_path=os.path.join(tmp, "cache.json"),
+                interval=1,
+            )
+            with mock.patch.object(
+                ram.threading,
+                "Thread",
+                side_effect=AssertionError("background thread spawned"),
+            ):
+                self.assertFalse(manager.start_background_check())
+
+    def test_cli_update_flags(self):
+        args = ram.parse_arguments(["--update"])
+        self.assertTrue(args.update)
+        args = ram.parse_arguments(["--check-update", "--no-update-check"])
+        self.assertTrue(args.check_update)
+        self.assertTrue(args.no_update_check)
 
 
 if __name__ == "__main__":
