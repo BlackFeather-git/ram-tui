@@ -30,6 +30,28 @@ from importlib.machinery import SourceFileLoader
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ram_module = SourceFileLoader("ram", os.path.join(ROOT_DIR, "ram")).load_module()
 
+FIXTURE_KEY = os.path.join(ROOT_DIR, "tests", "fixtures", "test_key.pem")
+FIXTURE_MODULUS_FILE = os.path.join(ROOT_DIR, "tests", "fixtures", "test_modulus.hex")
+
+with open(FIXTURE_MODULUS_FILE, "r") as f:
+    TEST_PUBLIC_KEY_N = int(f.read().strip(), 16)
+
+
+def sign_test_payload(data):
+    with tempfile.NamedTemporaryFile("wb", delete=False) as df, tempfile.NamedTemporaryFile("wb", delete=False) as sf:
+        df.write(data)
+        df.flush()
+        df_name, sf_name = df.name, sf.name
+    try:
+        subprocess.check_call(["openssl", "dgst", "-sha256", "-sign", FIXTURE_KEY, "-out", sf_name, df_name], stderr=subprocess.DEVNULL)
+        with open(sf_name, "rb") as f:
+            return base64.b64encode(f.read()).decode("ascii")
+    finally:
+        if os.path.exists(df_name):
+            os.unlink(df_name)
+        if os.path.exists(sf_name):
+            os.unlink(sf_name)
+
 
 class MockGitHubHandler(http.server.BaseHTTPRequestHandler):
     """Mock GitHub API and Raw CDN Handler."""
@@ -89,20 +111,8 @@ class MockGitHubHandler(http.server.BaseHTTPRequestHandler):
                 'if __name__ == "__main__":\n'
                 "    main()\n"
             ).encode("utf-8")
-            key_file = "/home/raven/.config/ram-tui/keys/maintainer_release.key"
-            with tempfile.NamedTemporaryFile("wb", delete=False) as df, tempfile.NamedTemporaryFile("wb", delete=False) as sf:
-                df.write(script_content)
-                df.flush()
-                df_name, sf_name = df.name, sf.name
-            try:
-                subprocess.check_call(["openssl", "dgst", "-sha256", "-sign", key_file, "-out", sf_name, df_name])
-                with open(sf_name, "rb") as f:
-                    sig_payload = base64.b64encode(f.read()) + b"\n"
-            finally:
-                if os.path.exists(df_name):
-                    os.unlink(df_name)
-                if os.path.exists(sf_name):
-                    os.unlink(sf_name)
+            sig_b64 = sign_test_payload(script_content)
+            sig_payload = (sig_b64 + "\n").encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/plain")
             self.send_header("Content-Length", str(len(sig_payload)))
@@ -118,6 +128,9 @@ class LocalUpdateFlowTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        cls.orig_pubkey_n = ram_module.RELEASE_PUBLIC_KEY_N
+        ram_module.RELEASE_PUBLIC_KEY_N = TEST_PUBLIC_KEY_N
+
         # Start ephemeral local HTTP server
         cls.server = socketserver.TCPServer(("127.0.0.1", 0), MockGitHubHandler)
         cls.port = cls.server.server_address[1]
@@ -127,11 +140,13 @@ class LocalUpdateFlowTest(unittest.TestCase):
         # Point UpdateManager URLs to local mock server
         cls.orig_api_url = ram_module.UPDATE_API_URL
         cls.orig_raw_url = ram_module.UPDATE_RAW_BASE_URL
+        cls.orig_interval = ram_module.UPDATE_DEFAULT_INTERVAL
         ram_module.UPDATE_API_URL = f"http://127.0.0.1:{cls.port}/repos/BlackFeather-git/ram-tui/releases/latest"
         ram_module.UPDATE_RAW_BASE_URL = f"http://127.0.0.1:{cls.port}/BlackFeather-git/ram-tui"
 
     @classmethod
     def tearDownClass(cls):
+        ram_module.RELEASE_PUBLIC_KEY_N = cls.orig_pubkey_n
         ram_module.UPDATE_API_URL = cls.orig_api_url
         ram_module.UPDATE_RAW_BASE_URL = cls.orig_raw_url
         cls.server.shutdown()

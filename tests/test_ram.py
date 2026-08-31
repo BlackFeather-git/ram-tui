@@ -14,18 +14,21 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 ram = SourceFileLoader("ram_tui_under_test", os.path.join(ROOT, "ram")).load_module()
 
-MAINTAINER_KEY_PATH = "/home/raven/.config/ram-tui/keys/maintainer_release.key"
+FIXTURE_KEY = os.path.join(ROOT, "tests", "fixtures", "test_key.pem")
+FIXTURE_MODULUS_FILE = os.path.join(ROOT, "tests", "fixtures", "test_modulus.hex")
+
+with open(FIXTURE_MODULUS_FILE, "r") as f:
+    TEST_PUBLIC_KEY_N = int(f.read().strip(), 16)
 
 
 def sign_test_payload(data):
-    if not os.path.exists(MAINTAINER_KEY_PATH):
-        return ""
+    """Sign payload using test fixture key for CI cross-platform portability."""
     with tempfile.NamedTemporaryFile("wb", delete=False) as df, tempfile.NamedTemporaryFile("wb", delete=False) as sf:
         df.write(data)
         df.flush()
         df_name, sf_name = df.name, sf.name
     try:
-        subprocess.check_call(["openssl", "dgst", "-sha256", "-sign", MAINTAINER_KEY_PATH, "-out", sf_name, df_name])
+        subprocess.check_call(["openssl", "dgst", "-sha256", "-sign", FIXTURE_KEY, "-out", sf_name, df_name], stderr=subprocess.DEVNULL)
         with open(sf_name, "rb") as f:
             return base64.b64encode(f.read()).decode("ascii")
     finally:
@@ -326,6 +329,13 @@ class TerminalAndCliTests(unittest.TestCase):
 
 
 class UpdateManagerTests(unittest.TestCase):
+    def setUp(self):
+        self.orig_pubkey_n = ram.RELEASE_PUBLIC_KEY_N
+        ram.RELEASE_PUBLIC_KEY_N = TEST_PUBLIC_KEY_N
+
+    def tearDown(self):
+        ram.RELEASE_PUBLIC_KEY_N = self.orig_pubkey_n
+
     def test_version_comparison(self):
         self.assertTrue(ram.is_newer_version("0.5.3", "0.6.0"))
         self.assertFalse(ram.is_newer_version("0.6.0", "0.5.3"))
