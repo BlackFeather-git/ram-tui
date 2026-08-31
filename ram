@@ -2037,12 +2037,41 @@ def main():
     except Exception:
         pass
 
+    def handle_resize(signum=None, frame=None):
+        try:
+            sys.stdout.write("\033[2J\033[H")
+            sys.stdout.flush()
+        except Exception:
+            pass
+
+    if hasattr(signal, "SIGWINCH"):
+        try:
+            signal.signal(signal.SIGWINCH, handle_resize)
+        except Exception:
+            pass
+
     refresh_ms = args.rate
     proc_count = args.count
     group_procs = not args.no_group
     paused = False
     show_help = False
     color_enabled = should_use_color(is_interactive=True)
+    last_term_size = None
+
+    def draw_frame(output_text):
+        nonlocal last_term_size
+        try:
+            current_term_size = shutil.get_terminal_size()
+            if last_term_size is not None and current_term_size != last_term_size:
+                sys.stdout.write("\033[2J\033[H")
+            last_term_size = current_term_size
+
+            formatted_lines = [f"{line}\033[K" for line in output_text.splitlines()]
+            sys.stdout.write(f"\033[H{chr(10).join(formatted_lines)}\033[J")
+            sys.stdout.flush()
+        except BrokenPipeError:
+            return False
+        return True
 
     term.setup_raw()
     update_manager.start_background_check()
@@ -2065,10 +2094,7 @@ def main():
                     show_help=show_help,
                     update_notice=update_notice
                 )
-                try:
-                    sys.stdout.write(f"\033[H{output}\033[J")
-                    sys.stdout.flush()
-                except BrokenPipeError:
+                if not draw_frame(output):
                     break
 
             # 2. Responsive non-blocking select wait for user keystrokes
@@ -2123,10 +2149,7 @@ def main():
                     show_help=show_help,
                     update_notice=update_notice
                 )
-                try:
-                    sys.stdout.write(f"\033[H{output}\033[J")
-                    sys.stdout.flush()
-                except BrokenPipeError:
+                if not draw_frame(output):
                     break
 
     except KeyboardInterrupt:
