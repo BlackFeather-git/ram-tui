@@ -1,3 +1,7 @@
+//! ram-tui CLI orchestration and interactive execution engine.
+
+#![allow(non_snake_case, non_camel_case_types, dead_code, unused_imports)]
+
 use std::collections::HashSet;
 use std::io::{self, Write};
 use std::process;
@@ -16,6 +20,17 @@ use ui::terminal::{should_use_color, terminal_size, Key, TerminalManager};
 use ui::themes::{get_palette, next_cycling_mode, next_theme, THEME_NAMES};
 
 pub mod diagnostics;
+
+#[cfg(target_os = "windows")]
+extern "system" {
+    fn OpenProcess(
+        dwDesiredAccess: u32,
+        bInheritHandle: i32,
+        dwProcessId: u32,
+    ) -> *mut std::ffi::c_void;
+    fn TerminateProcess(hProcess: *mut std::ffi::c_void, uExitCode: u32) -> i32;
+    fn CloseHandle(hObject: *mut std::ffi::c_void) -> i32;
+}
 
 const VERSION: &str = "1.0.0-rc.5";
 
@@ -510,19 +525,6 @@ pub fn run() {
                     }
                     #[cfg(target_os = "windows")]
                     {
-                        #[allow(non_snake_case)]
-                        extern "system" {
-                            fn OpenProcess(
-                                dwDesiredAccess: u32,
-                                bInheritHandle: i32,
-                                dwProcessId: u32,
-                            ) -> *mut std::ffi::c_void;
-                            fn TerminateProcess(
-                                hProcess: *mut std::ffi::c_void,
-                                uExitCode: u32,
-                            ) -> i32;
-                            fn CloseHandle(hObject: *mut std::ffi::c_void) -> i32;
-                        }
                         const PROCESS_TERMINATE: u32 = 0x0001;
                         let h = unsafe { OpenProcess(PROCESS_TERMINATE, 0, target.pid) };
                         if !h.is_null() {
