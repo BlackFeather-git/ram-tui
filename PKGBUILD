@@ -1,6 +1,6 @@
 # Maintainer: Raven <blackfeatheractual@proton.me>
 pkgname=ram-tui
-pkgver=0.7.0
+pkgver=0.7.0rc2
 pkgrel=1
 pkgdesc="Lightweight, aesthetic, cross-platform real-time terminal memory monitor with zero dependencies"
 arch=('any')

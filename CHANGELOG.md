@@ -5,11 +5,12 @@ All notable changes to `ram-tui` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.7.0] - 2026-09-01
+## [0.7.0-rc.2] - 2026-09-01
 
 ### Added
-- **TrueColor Continuous Gradient Engine**: Introduced 24-bit TrueColor gradient interpolation engine across all 13 themes (`THEME_GRADIENTS`), rendering smooth multi-stop linear transitions along memory gauge meters and per-process share bars.
-- **Large Bold ASCII Art Header**: Added bold 2-line half-block header banner (`█▀█ ▄▀█ █▄▀▄█ ▄▄ ▀█▀ █ █ █`) dynamically styled with the active theme gradient and paired with right-aligned host/OS metadata and live clock.
+- **Centered 6-Line Large Block ASCII Banner**: Added prominent 6-line block ASCII title art (`RAM-TUI`), perfectly centered on top and dynamically colorized with the active theme gradient on spacious viewports (`>=22` rows, `>=60` cols).
+- **Curated Multi-Stop TrueColor Palettes Across All 13 Themes**: Re-engineered palettes and gradients for all 13 built-in themes to match official community specifications (Catppuccin Mocha, Dracula Pro, Tokyo Night, Nord Arctic, Gruvbox Dark, Cyberpunk 2077, Rosé Pine, Everforest, Kanagawa Wave, Monokai Pro, Solarized Dark, and Monochrome).
+- **Midnight Velvet & Neon Lavender Default Theme**: Introduced vibrant cyber-violet default palette with Electric Violet (`#7030EF`) -> Neon Purple (`#A846FF`) -> Vivid Fuchsia (`#DB1FFF`) -> Light Lilac (`#E0B3FF`) gradient.
 - **Visual Theme Showcase Gallery**: Expanded documentation with pixel-perfect terminal previews for all 13 built-in themes in `assets/themes/`.
 - **52 Automated Cross-Platform Tests**: Added test coverage for gradient color stops and interpolation boundaries.
 
