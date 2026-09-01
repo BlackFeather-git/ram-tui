@@ -2,6 +2,7 @@
 
 use std::io::{self, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 
 /// Terminal key event.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -17,10 +18,9 @@ pub enum Key {
     Tab,
 }
 
-// Global state for synchronous and panic terminal restoration
-static mut G_ORIG_TERMIOS: libc::termios = unsafe { std::mem::zeroed() };
-static mut G_ORIG_TERMIOS_SAVED: bool = false;
-static mut G_RAW_ACTIVE: bool = false;
+// Global thread-safe state for synchronous and panic terminal restoration
+static RAW_ACTIVE: AtomicBool = AtomicBool::new(false);
+static SAVED_TERMIOS: Mutex<Option<libc::termios>> = Mutex::new(None);
 static SIGNALS_INSTALLED: AtomicBool = AtomicBool::new(false);
 static SIGNAL_RECEIVED: AtomicBool = AtomicBool::new(false);
 
@@ -30,16 +30,19 @@ extern "C" fn signal_handler(_sig: libc::c_int) {
 
 /// Global idempotent terminal restoration function.
 pub fn restore_terminal_state() {
-    unsafe {
-        if G_RAW_ACTIVE {
-            if libc::isatty(libc::STDOUT_FILENO) == 1 {
-                let _ = io::stdout().write_all(b"\x1b[?1049l\x1b[?25h\x1b[0m");
-                let _ = io::stdout().flush();
+    if RAW_ACTIVE.swap(false, Ordering::SeqCst) {
+        if unsafe { libc::isatty(libc::STDOUT_FILENO) } == 1 {
+            let _ = io::stdout().write_all(b"\x1b[?1049l\x1b[?25h\x1b[0m");
+            let _ = io::stdout().flush();
+        }
+        if unsafe { libc::isatty(libc::STDIN_FILENO) } == 1 {
+            if let Ok(guard) = SAVED_TERMIOS.lock() {
+                if let Some(ref orig) = *guard {
+                    unsafe {
+                        libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, orig);
+                    }
+                }
             }
-            if G_ORIG_TERMIOS_SAVED && libc::isatty(libc::STDIN_FILENO) == 1 {
-                libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &raw const G_ORIG_TERMIOS);
-            }
-            G_RAW_ACTIVE = false;
         }
     }
 }
@@ -73,8 +76,9 @@ impl TerminalManager {
             unsafe {
                 let mut termios = std::mem::zeroed::<libc::termios>();
                 if libc::tcgetattr(fd, &mut termios) == 0 {
-                    G_ORIG_TERMIOS = termios;
-                    G_ORIG_TERMIOS_SAVED = true;
+                    if let Ok(mut guard) = SAVED_TERMIOS.lock() {
+                        *guard = Some(termios);
+                    }
                 }
             }
         }
@@ -92,13 +96,13 @@ impl TerminalManager {
             return;
         }
 
-        unsafe {
-            if G_RAW_ACTIVE {
-                return;
-            }
+        if RAW_ACTIVE.load(Ordering::SeqCst) {
+            return;
+        }
 
-            // Install signal handlers once
-            if !SIGNALS_INSTALLED.swap(true, Ordering::SeqCst) {
+        // Install signal handlers once
+        if !SIGNALS_INSTALLED.swap(true, Ordering::SeqCst) {
+            unsafe {
                 let mut sa: libc::sigaction = std::mem::zeroed();
                 sa.sa_sigaction = signal_handler as *const () as usize;
                 sa.sa_flags = libc::SA_RESETHAND;
@@ -111,14 +115,17 @@ impl TerminalManager {
                 // Ignore SIGPIPE so broken pipe returns EPIPE cleanly to write_all
                 libc::signal(libc::SIGPIPE, libc::SIG_IGN);
             }
+        }
 
-            if G_ORIG_TERMIOS_SAVED {
-                let mut raw = G_ORIG_TERMIOS;
+        if let Ok(guard) = SAVED_TERMIOS.lock() {
+            if let Some(ref orig) = *guard {
+                let mut raw = *orig;
                 raw.c_lflag &= !(libc::ICANON | libc::ECHO | libc::ISIG);
                 raw.c_cc[libc::VMIN] = 0;
                 raw.c_cc[libc::VTIME] = 0;
-                if libc::tcsetattr(self.fd, libc::TCSANOW, &raw) == 0 {
-                    G_RAW_ACTIVE = true;
+                let rc = unsafe { libc::tcsetattr(self.fd, libc::TCSANOW, &raw) };
+                if rc == 0 {
+                    RAW_ACTIVE.store(true, Ordering::SeqCst);
                 }
             }
         }

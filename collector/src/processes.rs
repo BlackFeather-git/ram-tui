@@ -608,4 +608,25 @@ mod tests {
         let procs = collect_processes_from_dir(proc, true, 10, SortMetric::Rss);
         assert!(procs.is_empty());
     }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn test_pidfd_and_identity_validation() {
+        let my_pid = std::process::id();
+        let pidfd = open_pidfd(my_pid);
+        if let Some(fd) = pidfd {
+            assert!(fd >= 0);
+            unsafe {
+                libc::close(fd);
+            }
+        }
+
+        let is_valid = validate_process_identity(
+            Path::new("/proc"),
+            my_pid,
+            "nonexistent_proc_name_12345",
+            None,
+        );
+        assert!(!is_valid, "identity should fail when name does not match");
+    }
 }

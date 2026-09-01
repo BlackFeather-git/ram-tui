@@ -48,10 +48,10 @@ pub fn clamp_val<T: PartialOrd>(value: T, low: T, high: T) -> T {
     }
 }
 
-/// Bidi control characters to strip.
+/// Bidi and zero-width control characters to strip.
 const BIDI_CHARS: &[char] = &[
-    '\u{200e}', '\u{200f}', '\u{202a}', '\u{202b}', '\u{202c}', '\u{202d}', '\u{202e}', '\u{2066}',
-    '\u{2067}', '\u{2068}', '\u{2069}',
+    '\u{200b}', '\u{200c}', '\u{200d}', '\u{200e}', '\u{200f}', '\u{202a}', '\u{202b}', '\u{202c}',
+    '\u{202d}', '\u{202e}', '\u{2066}', '\u{2067}', '\u{2068}', '\u{2069}', '\u{feff}',
 ];
 
 /// Strip ANSI sequences, control characters, and bidi overrides from text.
@@ -92,11 +92,15 @@ mod tests {
 
     #[test]
     fn test_sanitize() {
-        let text = "hello\n\x1b[31;1mworld\x1b[0m\tok\u{202e}override";
+        let text =
+            "hello\n\x1b[31;1mworld\x1b[0m\tok\u{202e}override\u{202d}lro\u{feff}bom\u{200b}zwsp";
         let clean = sanitize_text(text);
         assert!(!clean.contains('\n'));
         assert!(!clean.contains('\x1b'));
         assert!(!clean.contains('\u{202e}'));
-        assert_eq!(clean, "hello~world~ok~override");
+        assert!(!clean.contains('\u{202d}'));
+        assert!(!clean.contains('\u{feff}'));
+        assert!(!clean.contains('\u{200b}'));
+        assert_eq!(clean, "hello~world~ok~override~lro~bom~zwsp");
     }
 }

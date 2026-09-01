@@ -108,7 +108,7 @@ pub fn collect_meminfo() -> MemInfo {
     };
 
     let swap_total = statex.ull_total_page_file.saturating_sub(total);
-    let swap_used = commit_as.saturating_sub(used);
+    let swap_used = 0;
 
     MemInfo {
         total,
