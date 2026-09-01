@@ -1,0 +1,10 @@
+# GitHub Linguist overrides
+# Keep the repository language breakdown reflecting core Python source code
+
+install.sh linguist-vendored
+install.ps1 linguist-vendored
+sync.sh linguist-vendored
+PKGBUILD linguist-vendored
+packaging/** linguist-vendored
+completions/** linguist-vendored
+tests/** linguist-documentation
