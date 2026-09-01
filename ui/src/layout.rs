@@ -717,23 +717,36 @@ pub fn render_snapshot(
 
 /// Get the system hostname.
 fn hostname() -> String {
-    let mut buf = [0u8; 256];
-    let ret = unsafe { libc::gethostname(buf.as_mut_ptr() as *mut libc::c_char, buf.len()) };
-    if ret == 0 {
-        let len = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
-        String::from_utf8_lossy(&buf[..len]).to_string()
-    } else {
-        "unknown".to_string()
+    if let Ok(h) = std::env::var("HOSTNAME") {
+        return h;
     }
+    if let Ok(h) = std::env::var("COMPUTERNAME") {
+        return h;
+    }
+    #[cfg(unix)]
+    {
+        let mut buf = [0u8; 256];
+        let ret = unsafe { libc::gethostname(buf.as_mut_ptr() as *mut libc::c_char, buf.len()) };
+        if ret == 0 {
+            let len = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
+            return String::from_utf8_lossy(&buf[..len]).to_string();
+        }
+    }
+    "unknown".to_string()
 }
 
 /// Get current local time as HH:MM:SS.
 fn local_now() -> String {
+    #[cfg(unix)]
     unsafe {
         let mut t: libc::time_t = 0;
         libc::time(&mut t);
         let mut tm: libc::tm = std::mem::zeroed();
         libc::localtime_r(&t, &mut tm);
         format!("{:02}:{:02}:{:02}", tm.tm_hour, tm.tm_min, tm.tm_sec)
+    }
+    #[cfg(not(unix))]
+    {
+        "00:00:00".to_string()
     }
 }

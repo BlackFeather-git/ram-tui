@@ -65,15 +65,15 @@ extern "system" {
         dwDesiredAccess: u32,
         bInheritHandle: i32,
         dwProcessId: u32,
-    ) -> *mut libc::c_void;
-    fn CloseHandle(hObject: *mut libc::c_void) -> i32;
+    ) -> *mut std::ffi::c_void;
+    fn CloseHandle(hObject: *mut std::ffi::c_void) -> i32;
     fn K32GetProcessMemoryInfo(
-        hProcess: *mut libc::c_void,
+        hProcess: *mut std::ffi::c_void,
         ppsmps: *mut PROCESS_MEMORY_COUNTERS_EX,
         cb: u32,
     ) -> i32;
     fn K32GetProcessImageFileNameA(
-        hProcess: *mut libc::c_void,
+        hProcess: *mut std::ffi::c_void,
         lpImageFileName: *mut u8,
         nSize: u32,
     ) -> u32;

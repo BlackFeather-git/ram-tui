@@ -172,6 +172,7 @@ pub fn install_panic_hook(version: &'static str) {
 }
 
 fn iso_timestamp() -> String {
+    #[cfg(unix)]
     unsafe {
         let mut t: libc::time_t = 0;
         libc::time(&mut t);
@@ -186,5 +187,9 @@ fn iso_timestamp() -> String {
             tm.tm_min,
             tm.tm_sec
         )
+    }
+    #[cfg(not(unix))]
+    {
+        "2026-09-01 00:00:00".to_string()
     }
 }
