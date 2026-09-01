@@ -17,7 +17,7 @@ pub enum SortMetric {
 
 /// Page size in bytes (typically 4096 on Linux).
 fn page_size() -> u64 {
-    // Safe: sysconf(_SC_PAGE_SIZE) on Linux
+    #[cfg(unix)]
     unsafe {
         let ps = libc::sysconf(libc::_SC_PAGE_SIZE);
         if ps > 0 {
@@ -25,6 +25,10 @@ fn page_size() -> u64 {
         } else {
             4096
         }
+    }
+    #[cfg(not(unix))]
+    {
+        4096
     }
 }
 
