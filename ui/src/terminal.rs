@@ -20,6 +20,7 @@ pub enum Key {
 
 // Global thread-safe state for synchronous and panic terminal restoration
 static RAW_ACTIVE: AtomicBool = AtomicBool::new(false);
+static ALT_SCREEN_ACTIVE: AtomicBool = AtomicBool::new(false);
 static SAVED_TERMIOS: Mutex<Option<libc::termios>> = Mutex::new(None);
 static SIGNALS_INSTALLED: AtomicBool = AtomicBool::new(false);
 static SIGNAL_RECEIVED: AtomicBool = AtomicBool::new(false);
@@ -30,17 +31,21 @@ extern "C" fn signal_handler(_sig: libc::c_int) {
 
 /// Global idempotent terminal restoration function.
 pub fn restore_terminal_state() {
-    if RAW_ACTIVE.swap(false, Ordering::SeqCst) {
-        if unsafe { libc::isatty(libc::STDOUT_FILENO) } == 1 {
-            let _ = io::stdout().write_all(b"\x1b[?1049l\x1b[?25h\x1b[0m");
-            let _ = io::stdout().flush();
-        }
-        if unsafe { libc::isatty(libc::STDIN_FILENO) } == 1 {
-            if let Ok(guard) = SAVED_TERMIOS.lock() {
-                if let Some(ref orig) = *guard {
-                    unsafe {
-                        libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, orig);
-                    }
+    // 1. Restore alternate screen buffer and cursor visibility independently
+    if ALT_SCREEN_ACTIVE.swap(false, Ordering::SeqCst)
+        && unsafe { libc::isatty(libc::STDOUT_FILENO) } == 1
+    {
+        let _ = io::stdout().write_all(b"\x1b[?1049l\x1b[?25h\x1b[0m");
+        let _ = io::stdout().flush();
+    }
+
+    // 2. Restore termios raw mode settings independently
+    if RAW_ACTIVE.swap(false, Ordering::SeqCst) && unsafe { libc::isatty(libc::STDIN_FILENO) } == 1
+    {
+        if let Ok(guard) = SAVED_TERMIOS.lock() {
+            if let Some(ref orig) = *guard {
+                unsafe {
+                    libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, orig);
                 }
             }
         }
@@ -130,11 +135,14 @@ impl TerminalManager {
             }
         }
 
-        self.restored = false;
+        // Switch to alternate screen only after raw mode is established
+        if RAW_ACTIVE.load(Ordering::SeqCst) {
+            let _ = io::stdout().write_all(b"\x1b[?1049h\x1b[?25l\x1b[H\x1b[2J");
+            let _ = io::stdout().flush();
+            ALT_SCREEN_ACTIVE.store(true, Ordering::SeqCst);
+        }
 
-        // Alt screen + hide cursor + clear
-        let _ = io::stdout().write_all(b"\x1b[?1049h\x1b[?25l\x1b[H\x1b[2J");
-        let _ = io::stdout().flush();
+        self.restored = false;
     }
 
     /// Restore terminal to original state.

@@ -37,7 +37,11 @@ jobs:
       - name: JSON Schema Validation
         shell: bash
         run: |
-          cargo run -p cli -- --once --json | python3 -c "
+          PYTHON_CMD="python3"
+          if ! command -v python3 &> /dev/null; then
+            PYTHON_CMD="python"
+          fi
+          cargo run -p cli -- --once --json | $PYTHON_CMD -c "
           import json, sys
           d = json.load(sys.stdin)
           assert 'memory' in d
