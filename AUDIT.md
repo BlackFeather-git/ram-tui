@@ -1,9 +1,9 @@
 # ram-tui — Maintainer Architectural Audit Log
 
-Date: 2026-08-31  
+Date: 2026-09-01  
 Maintainer: Raven (BlackFeather) https://github.com/BlackFeather-git/ram-tui  
-Latest Verified State: `v0.6.0` (12-job CI matrix verified across Ubuntu, macOS, and Windows)  
-Historical Reference: Initial audit completed at `v0.4.3`, hardened through `v0.5.x` to `v0.6.0`.
+Latest Verified State: `v0.6.1` (12-job CI matrix verified across Ubuntu, macOS, and Windows)  
+Historical Reference: Initial audit completed at `v0.4.3`, hardened through `v0.5.x` and `v0.6.0` to `v0.6.1`.
 
 ---
 

@@ -5,6 +5,15 @@ All notable changes to `ram-tui` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-09-01
+
+### Added
+- **Trademark RAM-TUI Branding Header**: Elevated title header to bold `RAM-TUI` across all interactive and mini display modes (`RAM-TUI  ·  hostname  ·  Linux x86_64  ·  theme`).
+- **Dynamic 2D Window Centering**: Automatically centers the entire dashboard in both dimensions (horizontal and vertical) on wide and tall viewports with dynamic padding, preventing header clocks and divider rules from stretching or sticking to window edges.
+- **50 Automated Cross-Platform Tests**: Added `test_window_vertical_and_horizontal_centering` verifying 2D padding and bounds across Python 3.8 through 3.13 on Linux, macOS, and Windows.
+
+---
+
 ## [0.6.0] - 2026-08-31
 
 ### Added
@@ -12,9 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Dual Cryptographic Integrity Validation**: Dual-layer verification requiring both strict SHA-256 digest checks (`ram.sha256`) and maintainer RSA digital signature validation (`ram.sig`).
 - **In-Place Self-Updater (`ram --update`, `ram --check-update`)**: Native fail-closed self-updater that safely downloads, cryptographically authenticates, semantically validates, compiles, and atomically replaces the installed executable.
 - **Ultra-Low Latency & Real-Time Performance (50ms / 20 FPS)**: Optimized default refresh rate to 50ms (20 FPS) with sub-millisecond frame latency (~0.29ms/frame) and <0.6% single-core CPU overhead.
-- **Dynamic 2D Window Centering & Adaptive Geometry**: Automatically centers the entire dashboard in both dimensions (horizontal and vertical) on wide and tall viewports with dynamic padding, preventing header clocks and divider rules from stretching or sticking to window edges.
-- **Trademark RAM-TUI Branding Header**: Elevated title header to bold `RAM-TUI` across all interactive and mini display modes.
-- **Comprehensive Cross-Platform Test Suite (50 Tests)**: Automated test suite validating Linux `/proc`, macOS `sysctl`/`vm_stat`, Windows PSAPI, RSA signature verification, TOCTOU symlink protection, signal propagation, 2D centered window geometry, and CLI arguments across Python 3.8 to 3.13 on Linux, macOS, and Windows.
+- **Dynamic Horizontal Centering & Geometry**: Automatically centers dashboard layout on wide monitors ($>80$ columns) without stretched divider lines or disjointed clocks.
+- **Flicker-Free Differential Rendering & Reflow Handling**: Replaced full terminal clears (`\033[2J`) with cursor home repositioning (`\033[H`), OS `SIGWINCH` resize signal interception, and per-line `\033[K` (Erase to End of Line) clear to eliminate display flicker and ghost characters.
 
 ### Security & Hardening
 - **Purged Unused Key Fixtures**: Removed legacy unencrypted PEM files from repository tracking, replacing test fixtures with pure in-memory numeric constants in `test_key_data.py`.
