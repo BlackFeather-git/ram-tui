@@ -1,4 +1,4 @@
-//! Terminal raw mode, alternate screen, async-signal-safe restoration, and non-blocking key input.
+//! Terminal raw mode, alternate screen, signal management, and non-blocking key input.
 
 use std::io::{self, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -17,38 +17,36 @@ pub enum Key {
     Tab,
 }
 
-// Global C-level state for async-signal-safe cleanup on SIGINT/SIGTERM/SIGPIPE
+// Global state for synchronous and panic terminal restoration
 static mut G_ORIG_TERMIOS: libc::termios = unsafe { std::mem::zeroed() };
+static mut G_ORIG_TERMIOS_SAVED: bool = false;
 static mut G_RAW_ACTIVE: bool = false;
 static SIGNALS_INSTALLED: AtomicBool = AtomicBool::new(false);
+static SIGNAL_RECEIVED: AtomicBool = AtomicBool::new(false);
 
-extern "C" fn signal_handler(sig: libc::c_int) {
-    unsafe {
-        // Async-signal-safe terminal escape sequence flush
-        let esc = b"\x1b[?1049l\x1b[?25h\x1b[0m\n";
-        libc::write(
-            libc::STDOUT_FILENO,
-            esc.as_ptr() as *const libc::c_void,
-            esc.len(),
-        );
-        if G_RAW_ACTIVE {
-            libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &raw const G_ORIG_TERMIOS);
-            G_RAW_ACTIVE = false;
-        }
-        libc::_exit(128 + sig);
-    }
+extern "C" fn signal_handler(_sig: libc::c_int) {
+    SIGNAL_RECEIVED.store(true, Ordering::SeqCst);
 }
 
 /// Global idempotent terminal restoration function.
 pub fn restore_terminal_state() {
     unsafe {
         if G_RAW_ACTIVE {
-            let _ = io::stdout().write_all(b"\x1b[?1049l\x1b[?25h\x1b[0m");
-            let _ = io::stdout().flush();
-            libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &raw const G_ORIG_TERMIOS);
+            if libc::isatty(libc::STDOUT_FILENO) == 1 {
+                let _ = io::stdout().write_all(b"\x1b[?1049l\x1b[?25h\x1b[0m");
+                let _ = io::stdout().flush();
+            }
+            if G_ORIG_TERMIOS_SAVED && libc::isatty(libc::STDIN_FILENO) == 1 {
+                libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &raw const G_ORIG_TERMIOS);
+            }
             G_RAW_ACTIVE = false;
         }
     }
+}
+
+/// Check if a termination signal (SIGINT/SIGTERM/SIGHUP) was received.
+pub fn is_termination_requested() -> bool {
+    SIGNAL_RECEIVED.load(Ordering::SeqCst)
 }
 
 /// Manages raw terminal state, alternate screen buffer, and cursor visibility.
@@ -76,6 +74,7 @@ impl TerminalManager {
                 let mut termios = std::mem::zeroed::<libc::termios>();
                 if libc::tcgetattr(fd, &mut termios) == 0 {
                     G_ORIG_TERMIOS = termios;
+                    G_ORIG_TERMIOS_SAVED = true;
                 }
             }
         }
@@ -107,16 +106,21 @@ impl TerminalManager {
 
                 libc::sigaction(libc::SIGINT, &sa, std::ptr::null_mut());
                 libc::sigaction(libc::SIGTERM, &sa, std::ptr::null_mut());
-                libc::sigaction(libc::SIGPIPE, &sa, std::ptr::null_mut());
                 libc::sigaction(libc::SIGHUP, &sa, std::ptr::null_mut());
+
+                // Ignore SIGPIPE so broken pipe returns EPIPE cleanly to write_all
+                libc::signal(libc::SIGPIPE, libc::SIG_IGN);
             }
 
-            let mut raw = G_ORIG_TERMIOS;
-            raw.c_lflag &= !(libc::ICANON | libc::ECHO | libc::ISIG);
-            raw.c_cc[libc::VMIN] = 0;
-            raw.c_cc[libc::VTIME] = 0;
-            libc::tcsetattr(self.fd, libc::TCSANOW, &raw);
-            G_RAW_ACTIVE = true;
+            if G_ORIG_TERMIOS_SAVED {
+                let mut raw = G_ORIG_TERMIOS;
+                raw.c_lflag &= !(libc::ICANON | libc::ECHO | libc::ISIG);
+                raw.c_cc[libc::VMIN] = 0;
+                raw.c_cc[libc::VTIME] = 0;
+                if libc::tcsetattr(self.fd, libc::TCSANOW, &raw) == 0 {
+                    G_RAW_ACTIVE = true;
+                }
+            }
         }
 
         self.restored = false;
@@ -137,6 +141,10 @@ impl TerminalManager {
 
     /// Wait up to `timeout_ms` milliseconds for key input.
     pub fn get_events(&self, timeout_ms: u64) -> Vec<Key> {
+        if is_termination_requested() {
+            return vec![Key::Char('\x03')];
+        }
+
         if !self.is_tty {
             if timeout_ms > 0 {
                 std::thread::sleep(std::time::Duration::from_millis(timeout_ms));
@@ -151,6 +159,10 @@ impl TerminalManager {
         };
 
         let ret = unsafe { libc::poll(&mut pfd, 1, timeout_ms as i32) };
+        if is_termination_requested() {
+            return vec![Key::Char('\x03')];
+        }
+
         if ret > 0 && (pfd.revents & libc::POLLIN) != 0 {
             let mut buf = [0u8; 128];
             let n =

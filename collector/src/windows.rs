@@ -36,8 +36,29 @@ struct PROCESS_MEMORY_COUNTERS_EX {
 }
 
 #[cfg(target_os = "windows")]
+#[repr(C)]
+struct PERFORMANCE_INFORMATION {
+    cb: u32,
+    commit_total: usize,
+    commit_limit: usize,
+    commit_peak: usize,
+    physical_total: usize,
+    physical_available: usize,
+    system_cache: usize,
+    kernel_total: usize,
+    kernel_paged: usize,
+    kernel_nonpaged: usize,
+    page_size: usize,
+    handle_count: u32,
+    process_count: u32,
+    thread_count: u32,
+}
+
+#[cfg(target_os = "windows")]
 extern "system" {
     fn GlobalMemoryStatusEx(lpBuffer: *mut MEMORYSTATUSEX) -> i32;
+    fn K32GetPerformanceInfo(pPerformanceInformation: *mut PERFORMANCE_INFORMATION, cb: u32)
+        -> i32;
     fn K32EnumProcesses(lpidProcess: *mut u32, cb: u32, lpcbNeeded: *mut u32) -> i32;
     fn OpenProcess(
         dwDesiredAccess: u32,
@@ -67,12 +88,26 @@ pub fn collect_meminfo() -> MemInfo {
         return MemInfo::default();
     }
 
+    let mut perf: PERFORMANCE_INFORMATION = unsafe { std::mem::zeroed() };
+    perf.cb = std::mem::size_of::<PERFORMANCE_INFORMATION>() as u32;
+    let has_perf = unsafe { K32GetPerformanceInfo(&mut perf, perf.cb) } != 0;
+
     let total = statex.ull_total_phys;
     let available = statex.ull_avail_phys;
     let used = total.saturating_sub(available);
-    let commit_limit = statex.ull_total_page_file;
-    let commit_as = commit_limit.saturating_sub(statex.ull_avail_page_file);
-    let swap_total = commit_limit.saturating_sub(total);
+
+    let (commit_as, commit_limit, cached) = if has_perf && perf.page_size > 0 {
+        let ps = perf.page_size as u64;
+        (
+            (perf.commit_total as u64).saturating_mul(ps),
+            (perf.commit_limit as u64).saturating_mul(ps),
+            (perf.system_cache as u64).saturating_mul(ps),
+        )
+    } else {
+        (0, 0, 0)
+    };
+
+    let swap_total = statex.ull_total_page_file.saturating_sub(total);
     let swap_used = commit_as.saturating_sub(used);
 
     MemInfo {
@@ -81,7 +116,7 @@ pub fn collect_meminfo() -> MemInfo {
         used,
         commit_as,
         commit_limit,
-        cached: 0,
+        cached,
         swap_used,
         swap_total,
         swap_desc: if swap_total > 0 {
@@ -163,7 +198,7 @@ pub fn collect_processes_sorted(
             CloseHandle(h_proc);
         }
 
-        let comm = if name_ret > 0 {
+        let raw_comm = if name_ret > 0 {
             let len = name_buf
                 .iter()
                 .position(|&b| b == 0)
@@ -177,6 +212,7 @@ pub fn collect_processes_sorted(
         } else {
             format!("PID {pid}")
         };
+        let comm = core_render::format::sanitize_text(&raw_comm);
 
         if group_by_name {
             let entry = grouped.entry(comm.clone()).or_insert(ProcessInfo {

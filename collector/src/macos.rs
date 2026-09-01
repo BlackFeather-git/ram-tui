@@ -95,8 +95,8 @@ pub fn collect_meminfo() -> MemInfo {
         total,
         available,
         used,
-        commit_as: used + swap_used,
-        commit_limit: total + swap_total,
+        commit_as: 0,
+        commit_limit: 0,
         cached,
         swap_used,
         swap_total,
@@ -171,7 +171,7 @@ pub fn collect_processes_sorted(
             )
         };
 
-        let comm = if name_ret > 0 {
+        let raw_comm = if name_ret > 0 {
             let len = name_buf
                 .iter()
                 .position(|&b| b == 0)
@@ -180,6 +180,7 @@ pub fn collect_processes_sorted(
         } else {
             format!("PID {pid}")
         };
+        let comm = core_render::format::sanitize_text(&raw_comm);
 
         let pid_u32 = pid as u32;
 

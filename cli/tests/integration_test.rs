@@ -30,7 +30,7 @@ fn test_json_snapshot_schema() {
     // Validate top-level fields
     assert!(json.get("timestamp").is_some(), "missing 'timestamp'");
     assert!(json.get("hostname").is_some(), "missing 'hostname'");
-    assert_eq!(json["os"], "Linux");
+    assert_eq!(json["os"], std::env::consts::OS);
     assert!(json.get("version").is_some(), "missing 'version'");
 
     // Validate memory object
@@ -130,12 +130,7 @@ fn test_zero_emoji_invariant() {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap();
-    let src_dirs = [
-        "cli/src",
-        "collector_linux/src",
-        "core_render/src",
-        "ui/src",
-    ];
+    let src_dirs = ["cli/src", "collector/src", "core_render/src", "ui/src"];
 
     fn is_emoji(ch: char) -> bool {
         matches!(ch,

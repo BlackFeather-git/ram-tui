@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.0-rc.3] - 2026-09-01
+
+### Cross-Platform Facade, Signal Model & Pidfd Hardening
+`RAM-TUI v1.0.0-rc.3` completes the architectural contracts for stable v1.0 release:
+
+* **OS-Neutral Collector Facade (`collector`)**: Refactored the telemetry subsystem into a platform-agnostic crate `collector` with unified API exports (`collect_meminfo()`, `collect_processes_sorted()`). The CLI binary is no longer Linux-hardwired and cleanly dispatches across Linux, macOS, and Windows.
+* **POSIX-Compliant Signal Model & Terminal Restoration**: Replaced in-handler `tcsetattr` calls with an atomic termination flag model and main-thread synchronous restoration. Terminal raw mode and original termios state are only modified upon verified successful system transitions. `SIGPIPE` is ignored at the C level so broken pipes return `EPIPE` cleanly without crashing or corrupting terminal states.
+* **Linux `pidfd` Race-Free Process Signaling**: Implemented `pidfd_open` and `pidfd_send_signal` (Linux kernel >= 5.3) for process termination (`x`/`K`), mathematically eliminating PID-reuse race conditions at the kernel level.
+* **Native Windows System Commit Telemetry**: Wired `K32GetPerformanceInfo` (`PERFORMANCE_INFORMATION`) to query true system-wide commit charges and physical system cache without synthetic pagefile approximations.
+* **Native Process Name Sanitization**: Process names on macOS (`proc_name`) and Windows (`K32GetProcessImageFileNameA`) are strictly passed through `core_render::format::sanitize_text()`.
+* **Zero-Allocation Hotkey Switching**: All hotkey actions (`1`, `2`, `o`, `m`, `t`, `T`, `s`, `/`, `j`, `k`) operate strictly in-memory with zero disk/procfs I/O.
+
+---
+
 ## [1.0.0-rc.2] - 2026-09-01
 
 ### Correctness, Safety & Cross-Platform Hardening

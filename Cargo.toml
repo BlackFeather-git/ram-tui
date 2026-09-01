@@ -1,14 +1,14 @@
 [workspace]
 members = [
     "core_render",
-    "collector_linux",
+    "collector",
     "ui",
     "cli",
 ]
 resolver = "2"
 
 [workspace.package]
-version = "1.0.0-rc.2"
+version = "1.0.0-rc.3"
 edition = "2021"
 license = "MIT"
 authors = ["Raven (BlackFeather) <blackfeatheractual@proton.me>"]

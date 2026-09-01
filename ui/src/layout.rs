@@ -14,7 +14,7 @@ use core_render::{
     sparkline::render_sparkline,
 };
 
-use collector_linux::{MemInfo, ProcessInfo, SortMetric};
+use collector::{MemInfo, ProcessInfo, SortMetric};
 
 use crate::themes::{get_palette, Palette, THEME_NAMES};
 

@@ -7,5 +7,5 @@ description = "Theme engine, layout modes, and TUI rendering for ram-tui"
 
 [dependencies]
 core_render = { path = "../core_render" }
-collector_linux = { path = "../collector_linux" }
+collector = { path = "../collector" }
 libc = "0.2"

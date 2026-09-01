@@ -1,9 +1,9 @@
 [package]
-name = "collector_linux"
+name = "collector"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Linux /proc memory and process collectors for ram-tui"
+description = "Cross-platform system memory and process telemetry collectors for ram-tui"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

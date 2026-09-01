@@ -2,22 +2,22 @@
 
 # RAM-TUI
 
-**A blazing-fast, aesthetic, zero-dependency real-time terminal memory monitor & process telemetry engine.**
+**A blazing-fast, aesthetic, native terminal memory monitor & process telemetry engine with zero runtime dependencies.**
 
 *Linux · macOS · Windows · Native Rust Core · Sub-Millisecond Latency · Deep Kernel Telemetry (PSS/USS)*
 
 <br />
 
-<img src="assets/hero.png?v=1.0.0-rc.1" alt="RAM-TUI live terminal interface" width="860" />
+<img src="assets/hero.png?v=1.0.0-rc.3" alt="RAM-TUI live terminal interface" width="860" />
 
 <br />
 
-[![CI](https://github.com/BlackFeather-git/ram-tui/actions/workflows/test.yml/badge.svg?branch=test)](https://github.com/BlackFeather-git/ram-tui/actions)
-[![Latest Release](https://img.shields.io/badge/release-v1.0.0--rc.1-brightgreen.svg)](https://github.com/BlackFeather-git/ram-tui/releases)
+[![CI](https://github.com/BlackFeather-git/ram-tui/actions/workflows/ci.yml/badge.svg?branch=test)](https://github.com/BlackFeather-git/ram-tui/actions)
+[![Latest Release](https://img.shields.io/badge/release-v1.0.0--rc.3-brightgreen.svg)](https://github.com/BlackFeather-git/ram-tui/releases)
 [![Rust 1.70+](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-brightgreen.svg)]()
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-62%20passed-success)](cli/tests/)
+[![Tests](https://img.shields.io/badge/tests-64%20passed-success)](cli/tests/)
 
 [Why RAM-TUI?](#why-ram-tui) · [Benchmarks](#performance--benchmarks) · [Quick Start](#quick-start) · [Installation](#installation) · [Color Themes](#color-themes) · [Display Modes](#display-modes) · [Kernel Telemetry](#deep-kernel-telemetry) · [Hotkeys](#interactive-hotkeys) · [Status Bars](#status-bar-integration) · [JSON](#json-telemetry) · [Architecture](#architecture) · [Security](#security--updates)
 
@@ -359,7 +359,7 @@ Options:
 
 ## Automated Verification
 
-Run the full automated test suite (62 tests):
+Run the full automated test suite (64 tests):
 
 ```bash
 cargo test --workspace

@@ -5,7 +5,7 @@ use std::process;
 use clap::Parser;
 use serde::Serialize;
 
-use collector_linux::{
+use collector::{
     collect_meminfo, collect_processes_sorted, CgroupInfo, MemInfo, ProcessInfo, SortMetric,
 };
 use core_render::format::sanitize_text;
@@ -17,9 +17,9 @@ use ui::themes::{get_palette, next_cycling_mode, next_theme, THEME_NAMES};
 
 pub mod diagnostics;
 
-const VERSION: &str = "1.0.0-rc.2";
+const VERSION: &str = "1.0.0-rc.3";
 
-/// ram-tui v1.0.0-rc.2 — Minimalist real-time terminal memory monitor for Linux
+/// ram-tui v1.0.0-rc.3 — Fast, aesthetic, native terminal memory monitor
 #[derive(Parser, Debug)]
 #[command(name = "ram", version = VERSION, about)]
 struct Args {
@@ -81,22 +81,26 @@ struct Args {
 }
 
 fn theme_parser(s: &str) -> Result<String, String> {
-    if THEME_NAMES.contains(&s) {
-        Ok(s.to_string())
+    let lower = s.to_lowercase();
+    if THEME_NAMES.contains(&lower.as_str()) {
+        Ok(lower)
     } else {
         Err(format!(
-            "unknown theme '{s}'. Available: {}",
+            "unknown theme '{s}'. Available themes: {}",
             THEME_NAMES.join(", ")
         ))
     }
 }
 
-/// JSON snapshot schema matching Python v0.7.0 output with v1.0.0 extensions.
+// ---------------------------------------------------------------------------
+// JSON serialization structs
+// ---------------------------------------------------------------------------
+
 #[derive(Serialize)]
 struct JsonSnapshot {
     timestamp: String,
     hostname: String,
-    os: &'static str,
+    os: String,
     version: &'static str,
     memory: JsonMemory,
     top_processes: Vec<JsonProcess>,
@@ -113,7 +117,6 @@ struct JsonMemory {
     swap_used: u64,
     swap_total: u64,
     swap_desc: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     cgroup: Option<CgroupInfo>,
     valid: bool,
 }
@@ -140,12 +143,20 @@ impl From<&MemInfo> for JsonMemory {
 struct JsonProcess {
     name: String,
     rss: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pss: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     uss: Option<u64>,
     count: u32,
     pid: Option<u32>,
+    children: Vec<JsonChild>,
+}
+
+#[derive(Serialize)]
+struct JsonChild {
+    pid: u32,
+    name: String,
+    rss: u64,
+    pss: Option<u64>,
+    uss: Option<u64>,
 }
 
 impl From<&ProcessInfo> for JsonProcess {
@@ -157,57 +168,37 @@ impl From<&ProcessInfo> for JsonProcess {
             uss: p.uss,
             count: p.count,
             pid: p.pid,
+            children: p
+                .children
+                .iter()
+                .map(|c| JsonChild {
+                    pid: c.pid,
+                    name: c.name.clone(),
+                    rss: c.rss,
+                    pss: c.pss,
+                    uss: c.uss,
+                })
+                .collect(),
         }
     }
 }
 
 fn iso_timestamp() -> String {
-    use std::time::SystemTime;
-    let dur = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default();
-    let secs = dur.as_secs();
-    // Simple UTC ISO-8601 timestamp
-    let days_since_epoch = secs / 86400;
-    let secs_in_day = secs % 86400;
-    let hours = secs_in_day / 3600;
-    let minutes = (secs_in_day % 3600) / 60;
-    let seconds = secs_in_day % 60;
-
-    // Calculate year/month/day from days since epoch (1970-01-01)
-    let (year, month, day) = days_to_ymd(days_since_epoch);
-    format!("{year:04}-{month:02}-{day:02}T{hours:02}:{minutes:02}:{seconds:02}Z")
-}
-
-fn days_to_ymd(mut days: u64) -> (u64, u64, u64) {
-    let mut year = 1970u64;
-    loop {
-        let days_in_year = if is_leap(year) { 366 } else { 365 };
-        if days < days_in_year {
-            break;
-        }
-        days -= days_in_year;
-        year += 1;
+    unsafe {
+        let mut t: libc::time_t = 0;
+        libc::time(&mut t);
+        let mut tm: libc::tm = std::mem::zeroed();
+        libc::localtime_r(&t, &mut tm);
+        format!(
+            "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}",
+            tm.tm_year + 1900,
+            tm.tm_mon + 1,
+            tm.tm_mday,
+            tm.tm_hour,
+            tm.tm_min,
+            tm.tm_sec
+        )
     }
-    let months = if is_leap(year) {
-        [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    } else {
-        [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    };
-    let mut month = 1u64;
-    for &m in &months {
-        if days < m {
-            break;
-        }
-        days -= m;
-        month += 1;
-    }
-    (year, month, days + 1)
-}
-
-#[allow(clippy::manual_is_multiple_of)]
-fn is_leap(y: u64) -> bool {
-    (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
 }
 
 fn get_hostname() -> String {
@@ -215,20 +206,28 @@ fn get_hostname() -> String {
     let ret = unsafe { libc::gethostname(buf.as_mut_ptr() as *mut libc::c_char, buf.len()) };
     if ret == 0 {
         let len = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
-        sanitize_text(&String::from_utf8_lossy(&buf[..len]))
+        let raw = String::from_utf8_lossy(&buf[..len]);
+        sanitize_text(&raw)
     } else {
-        "unknown".to_string()
+        "unknown".into()
     }
 }
 
-pub fn run() {
-    // Install crash diagnostics & panic handler
-    diagnostics::install_panic_hook(VERSION);
+struct KillTarget {
+    pid: u32,
+    name: String,
+    #[cfg(target_os = "linux")]
+    pidfd: Option<i32>,
+    #[cfg(target_os = "linux")]
+    starttime: Option<String>,
+}
 
-    // Handle SIGPIPE gracefully
-    unsafe {
-        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
-    }
+// ---------------------------------------------------------------------------
+// Main entry point
+// ---------------------------------------------------------------------------
+
+pub fn run() {
+    diagnostics::install_panic_hook(VERSION);
 
     let args = Args::parse();
     diagnostics::init_diagnostics(args.debug);
@@ -266,7 +265,7 @@ pub fn run() {
         let snapshot = JsonSnapshot {
             timestamp: iso_timestamp(),
             hostname: get_hostname(),
-            os: "Linux",
+            os: std::env::consts::OS.to_string(),
             version: VERSION,
             memory: JsonMemory::from(&mem),
             top_processes: procs.iter().map(JsonProcess::from).collect(),
@@ -336,12 +335,6 @@ pub fn run() {
     }
 
     // Interactive TUI mode
-    // Install signal handlers
-    unsafe {
-        libc::signal(libc::SIGINT, libc::SIG_DFL);
-        libc::signal(libc::SIGTERM, libc::SIG_DFL);
-    }
-
     let mut refresh_ms = args.rate;
     let proc_count = args.count;
     let mut group_procs = !args.no_group;
@@ -369,7 +362,7 @@ pub fn run() {
     let mut expanded_groups: HashSet<String> = HashSet::new();
     let mut search_active = false;
     let mut search_query: Option<String> = args.filter.clone();
-    let mut kill_prompt: Option<(u32, String, Option<String>)> = None;
+    let mut kill_prompt: Option<KillTarget> = None;
     let mut theme_modal_open = false;
     let mut theme_modal_idx: usize = THEME_NAMES
         .iter()
@@ -404,9 +397,7 @@ pub fn run() {
 
             let pal = get_palette(&current_theme, color_enabled);
             let (cols, rows) = terminal_size();
-            let kill_arg = kill_prompt
-                .as_ref()
-                .map(|(pid, name, _)| (*pid, name.as_str()));
+            let kill_arg = kill_prompt.as_ref().map(|t| (t.pid, t.name.as_str()));
             let t_modal = if theme_modal_open {
                 Some(theme_modal_idx)
             } else {
@@ -447,32 +438,49 @@ pub fn run() {
         let mut re_render = false;
 
         for event in events {
-            if let Some((pid, name, st)) = kill_prompt.take() {
+            if let Some(target) = kill_prompt.take() {
                 if let Key::Char('y' | 'Y') = event {
                     #[cfg(target_os = "linux")]
                     {
-                        if collector_linux::processes::validate_process_identity(
-                            std::path::Path::new("/proc"),
-                            pid,
-                            &name,
-                            st.as_deref(),
-                        ) {
-                            unsafe {
-                                libc::kill(pid as libc::pid_t, libc::SIGTERM);
+                        let mut killed = false;
+                        if let Some(fd) = target.pidfd {
+                            if collector::pidfd_send_sigterm(fd) {
+                                killed = true;
+                                diagnostics::log_debug(&format!(
+                                    "Sent SIGTERM via pidfd to process {} (PID: {})",
+                                    target.name, target.pid
+                                ));
                             }
-                            diagnostics::log_debug(&format!(
-                                "Sent SIGTERM to process {name} (PID: {pid})"
-                            ));
-                        } else {
-                            diagnostics::log_debug(&format!(
-                                "Process {name} (PID: {pid}) identity mismatch — kill aborted"
-                            ));
+                            unsafe {
+                                libc::close(fd);
+                            }
+                        }
+                        if !killed {
+                            if collector::validate_process_identity(
+                                std::path::Path::new("/proc"),
+                                target.pid,
+                                &target.name,
+                                target.starttime.as_deref(),
+                            ) {
+                                unsafe {
+                                    libc::kill(target.pid as libc::pid_t, libc::SIGTERM);
+                                }
+                                diagnostics::log_debug(&format!(
+                                    "Sent SIGTERM to process {} (PID: {})",
+                                    target.name, target.pid
+                                ));
+                            } else {
+                                diagnostics::log_debug(&format!(
+                                    "Process {} (PID: {}) identity mismatch — kill cancelled",
+                                    target.name, target.pid
+                                ));
+                            }
                         }
                     }
                     #[cfg(not(target_os = "linux"))]
                     {
                         unsafe {
-                            libc::kill(pid as libc::pid_t, libc::SIGTERM);
+                            libc::kill(target.pid as libc::pid_t, libc::SIGTERM);
                         }
                     }
                 }
@@ -626,13 +634,21 @@ pub fn run() {
                         let target_pid = p.pid.or_else(|| p.children.first().map(|c| c.pid));
                         if let Some(pid) = target_pid {
                             #[cfg(target_os = "linux")]
-                            let st = collector_linux::processes::read_starttime(
-                                std::path::Path::new("/proc"),
-                                &pid.to_string(),
+                            let (pidfd, st) = (
+                                collector::open_pidfd(pid),
+                                collector::read_starttime(
+                                    std::path::Path::new("/proc"),
+                                    &pid.to_string(),
+                                ),
                             );
-                            #[cfg(not(target_os = "linux"))]
-                            let st = None;
-                            kill_prompt = Some((pid, p.name.clone(), st));
+                            kill_prompt = Some(KillTarget {
+                                pid,
+                                name: p.name.clone(),
+                                #[cfg(target_os = "linux")]
+                                pidfd,
+                                #[cfg(target_os = "linux")]
+                                starttime: st,
+                            });
                             re_render = true;
                         }
                     }
@@ -707,9 +723,7 @@ pub fn run() {
         if re_render {
             let pal = get_palette(&current_theme, color_enabled);
             let (cols, rows) = terminal_size();
-            let kill_arg = kill_prompt
-                .as_ref()
-                .map(|(pid, name, _)| (*pid, name.as_str()));
+            let kill_arg = kill_prompt.as_ref().map(|t| (t.pid, t.name.as_str()));
             let t_modal = if theme_modal_open {
                 Some(theme_modal_idx)
             } else {

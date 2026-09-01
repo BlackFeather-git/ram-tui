@@ -1,7 +1,4 @@
-//! collector_linux — Single-pass `/proc` parsers for memory and process info.
-//!
-//! Reads `/proc/meminfo`, `/proc/swaps`, `/proc/<pid>/statm`, `/proc/<pid>/stat`,
-//! `/proc/<pid>/comm` to collect system memory state and top-RSS processes.
+//! collector — Single-pass cross-platform system memory and process telemetry engine.
 
 pub mod cgroup;
 pub mod meminfo;
@@ -19,8 +16,9 @@ pub use cgroup::{detect_cgroup, detect_cgroup_from, CgroupInfo};
 pub use meminfo::{collect_meminfo, collect_meminfo_from, MemInfo};
 #[cfg(target_os = "linux")]
 pub use processes::{
-    collect_processes, collect_processes_from_dir, collect_processes_sorted, read_starttime,
-    validate_process_identity, ProcessChild, ProcessInfo, SortMetric,
+    collect_processes, collect_processes_from_dir, collect_processes_sorted, open_pidfd,
+    pidfd_send_sigterm, read_starttime, validate_process_identity, ProcessChild, ProcessInfo,
+    SortMetric,
 };
 
 #[cfg(target_os = "macos")]
