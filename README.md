@@ -21,7 +21,7 @@
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-brightgreen.svg)]()
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-49%20passed-success)](tests/)
+[![Tests](https://img.shields.io/badge/tests-50%20passed-success)](tests/)
 
 <br />
 
@@ -412,7 +412,7 @@ For full details, see [SECURITY.md](SECURITY.md).
 
 ### Running the Test Suite
 
-Run the full automated test suite locally (49 tests):
+Run the full automated test suite locally (50 tests):
 
 ```bash
 python3 -m unittest discover tests

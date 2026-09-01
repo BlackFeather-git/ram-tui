@@ -44,7 +44,7 @@ This document details the resolution of all confirmed peer audit findings (`C-00
 
 ## 4. Automated Testing
 
-The automated test suite (`tests/test_ram.py` and `tests/test_update_flow.py`) includes **49 tests** validating:
+The automated test suite (`tests/test_ram.py` and `tests/test_update_flow.py`) includes **50 tests** validating:
 - IEC byte formatting and boundary thresholds.
 - Percentage bounds and zero-denominator handling.
 - Full ANSI sequence and Unicode bidi character removal.

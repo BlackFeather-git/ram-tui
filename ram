@@ -1723,7 +1723,7 @@ def render_meter_track(ratio, width=32, pal=None, symbol="block", color=None):
         return f"{filled_part}{empty_part}"
 
 
-def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", theme="default", symbol="block", enable_color=True, show_help=False, update_notice=None):
+def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", theme="default", symbol="block", enable_color=True, show_help=False, update_notice=None, center_vertical=False):
     """Renders dashboard with 2D physical terminal cell bounds (C-001/C-002) and active help overlay (C-003)."""
     pal = get_palette(theme, enable_color)
     hostname = sanitize_text(socket.gethostname())
@@ -1767,11 +1767,15 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
         bar_w = max(4, min(ui_cols - 28, 44))
         meter = render_meter_track(used / total if total > 0 else 0, width=bar_w, pal=pal, symbol=symbol)
         pct_color = g if used_pct < 60 else (w if used_pct < 85 else crit)
-        line1 = clamp_line_to_cols(f"{margin}{h}{bold}RAM{r}  {meter}  {pct_color}{bold}{used_pct:>5.1f}%{r}  {t}{format_bytes(used, 1)}{r}{m}/{r}{t}{format_bytes(total, 1)}{r}", cols)
+        line1 = clamp_line_to_cols(f"{margin}{h}{bold}RAM-TUI{r}  {meter}  {pct_color}{bold}{used_pct:>5.1f}%{r}  {t}{format_bytes(used, 1)}{r}{m}/{r}{t}{format_bytes(total, 1)}{r}", cols)
+        mini_lines = [line1]
         if show_help and rows >= 2:
             line2 = clamp_line_to_cols(f"{margin}{m}{dim}q:quit p:pause t:theme s:symbol m:mode 1/2:group +/-:rate h:help{r}", cols)
-            return f"{line1}\n{line2}"
-        return line1
+            mini_lines.append(line2)
+        if center_vertical and rows > len(mini_lines):
+            pad_top = (rows - len(mini_lines)) // 2
+            mini_lines = [""] * pad_top + mini_lines
+        return "\n".join(mini_lines)
 
     # 3. HERO & COMPACT MODES (Centered & dynamic width bounded)
     ui_cols = min(cols, 80)
@@ -1788,13 +1792,13 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
 
     if ui_cols >= 64:
         header_left = (
-            f"{h}{bold}RAM{r}  {m}·{r}  {t}{truncate_plain_cells(hostname, 16)}{r}  {m}·{r}  "
+            f"{h}{bold}RAM-TUI{r}  {m}·{r}  {t}{truncate_plain_cells(hostname, 16)}{r}  {m}·{r}  "
             f"{m}{SYSTEM_OS} {platform.machine()}{r}  {m}·{r}  {a}{theme}{r}{state_str}"
         )
     elif ui_cols >= 44:
-        header_left = f"{h}{bold}RAM{r}  {m}·{r}  {t}{truncate_plain_cells(hostname, 12)}{r}  {m}·{r}  {a}{theme}{r}{state_str}"
+        header_left = f"{h}{bold}RAM-TUI{r}  {m}·{r}  {t}{truncate_plain_cells(hostname, 12)}{r}  {m}·{r}  {a}{theme}{r}{state_str}"
     else:
-        header_left = f"{h}{bold}RAM{r}  {m}·{r}  {a}{theme}{r}{state_str}"
+        header_left = f"{h}{bold}RAM-TUI{r}  {m}·{r}  {a}{theme}{r}{state_str}"
 
     left_w = visible_cell_width(header_left)
     if left_w + clock_w + 2 <= ui_cols:
@@ -1893,6 +1897,9 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
     clamped_lines = [clamp_line_to_cols(f"{margin}{line}", cols) for line in lines]
     if len(clamped_lines) > rows:
         clamped_lines = clamped_lines[:rows]
+    elif center_vertical and rows > len(clamped_lines):
+        pad_top = (rows - len(clamped_lines)) // 2
+        clamped_lines = [""] * pad_top + clamped_lines
 
     return "\n".join(clamped_lines)
 
@@ -2095,7 +2102,8 @@ def main():
                     symbol=current_symbol,
                     enable_color=color_enabled,
                     show_help=show_help,
-                    update_notice=update_notice
+                    update_notice=update_notice,
+                    center_vertical=True
                 )
                 if not draw_frame(output):
                     break
@@ -2150,7 +2158,8 @@ def main():
                     symbol=current_symbol,
                     enable_color=color_enabled,
                     show_help=show_help,
-                    update_notice=update_notice
+                    update_notice=update_notice,
+                    center_vertical=True
                 )
                 if not draw_frame(output):
                     break
