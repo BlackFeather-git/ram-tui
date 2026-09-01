@@ -18,7 +18,8 @@ $Ps1Path = Join-Path $InstallDir "ram.ps1"
 Write-Host "==> Installing ram-tui for Windows..." -ForegroundColor Cyan
 
 # 1. Download binary and cryptographic assets
-$BaseUri = "https://raw.githubusercontent.com/BlackFeather-git/ram-tui/main"
+$Ref = if ($env:RAM_INSTALL_TAG) { $env:RAM_INSTALL_TAG } elseif ($env:RAM_INSTALL_BRANCH) { $env:RAM_INSTALL_BRANCH } else { "main" }
+$BaseUri = "https://raw.githubusercontent.com/BlackFeather-git/ram-tui/$Ref"
 $TempDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString())
 New-Item -ItemType Directory -Path $TempDir -Force | Out-Null
 $TempRam = Join-Path $TempDir "ram"

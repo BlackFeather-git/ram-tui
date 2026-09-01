@@ -5,6 +5,15 @@ All notable changes to `ram-tui` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0-rc.4] - 2026-09-01
+
+### Security & Hardening
+- **True Fail-Closed RSA Signature Enforcement in `install.sh`**: Eliminated masked subshell exit status in Unix installer, guaranteeing strictly fail-closed abort on any signature verification failure or missing cryptographic assets.
+- **Reproducible Release Tag Pinning**: Updated both Unix (`install.sh`) and Windows (`install.ps1`) installers to support pinned release tags via `RAM_INSTALL_TAG` / `REF`, preventing drift against mutable branches.
+- **Synchronized Security Support Table**: Updated [`SECURITY.md`](SECURITY.md) to reflect `0.7.x` active support lifecycle and `0.6.x` maintenance status.
+
+---
+
 ## [0.7.0-rc.3] - 2026-09-01
 
 ### Security & Hardening

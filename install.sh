@@ -7,10 +7,10 @@
 set -euo pipefail
 
 REPO="BlackFeather-git/ram-tui"
-BRANCH="${RAM_INSTALL_BRANCH:-main}"
+REF="${RAM_INSTALL_TAG:-${RAM_INSTALL_BRANCH:-main}}"
 BIN_DIR="${HOME}/.local/bin"
 TARGET="${BIN_DIR}/ram"
-BASE_URL="https://raw.githubusercontent.com/${REPO}/${BRANCH}"
+BASE_URL="https://raw.githubusercontent.com/${REPO}/${REF}"
 
 DRY_RUN=false
 FORCE=false
@@ -28,7 +28,7 @@ for arg in "$@"; do
     esac
 done
 
-echo -e "\033[1;36m==> Installing ram-tui (branch: ${BRANCH})...\033[0m"
+echo -e "\033[1;36m==> Installing ram-tui (ref: ${REF})...\033[0m"
 
 if [ "$DRY_RUN" = true ]; then
     echo -e "\033[1;33m[DRY-RUN] Target binary: ${TARGET}\033[0m"
@@ -122,7 +122,7 @@ echo -e "\033[1;32m-> Checksum verified: SHA-256 (${ACTUAL_HASH:0:16}...)\033[0m
 
 # 2. Mandatory Maintainer RSA-2048 Digital Signature Verification
 if command -v python3 >/dev/null 2>&1; then
-    SIG_CHECK=$(python3 -c "
+    if python3 -c "
 import importlib.machinery, importlib.util, sys
 try:
     loader = importlib.machinery.SourceFileLoader('ram_mod', '${TMP_BIN}')
@@ -133,17 +133,18 @@ try:
     with open('${TMP_SIG}', 'r', encoding='utf-8') as f: sig = f.read().strip()
     if m.verify_release_signature(data, sig):
         sys.exit(0)
-    else:
-        sys.exit(1)
+    sys.exit(1)
 except Exception:
     sys.exit(2)
-" 2>&1 || true)
-    SIG_CODE=$?
-    if [ $SIG_CODE -ne 0 ]; then
-        echo "Error: Maintainer RSA-2048 cryptographic signature verification failed (code: ${SIG_CODE}). Fail-closed." >&2
+"; then
+        echo -e "\033[1;32m-> Signature verified: RSA-2048 PKCS#1 v1.5 (Maintainer Root of Trust)\033[0m"
+    else
+        echo "Error: Maintainer RSA-2048 cryptographic signature verification failed. Aborting installation." >&2
         exit 1
     fi
-    echo -e "\033[1;32m-> Signature verified: RSA-2048 PKCS#1 v1.5 (Maintainer Root of Trust)\033[0m"
+else
+    echo "Error: python3 is required to verify cryptographic release signatures. Aborting installation." >&2
+    exit 1
 fi
 
 # Install executable with 0755 permissions

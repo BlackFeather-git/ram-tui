@@ -2,8 +2,8 @@
 
 Date: 2026-09-01  
 Maintainer: Raven (BlackFeather) https://github.com/BlackFeather-git/ram-tui  
-Latest Verified State: `v0.7.0-rc.3` (12-job CI matrix verified across Ubuntu, macOS, and Windows)  
-Historical Reference: Initial audit completed at `v0.4.3`, hardened through `v0.5.x` and `v0.6.x` to `v0.7.0-rc.3`.
+Latest Verified State: `v0.7.0-rc.4` (12-job CI matrix verified across Ubuntu, macOS, and Windows)  
+Historical Reference: Initial audit completed at `v0.4.3`, hardened through `v0.5.x` and `v0.6.x` to `v0.7.0-rc.4`.
 
 ---
 
