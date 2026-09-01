@@ -1,5 +1,7 @@
 //! Formatting utilities — byte formatting, percentage, text sanitisation, cross-platform timestamps.
 
+#![allow(non_snake_case, non_camel_case_types, dead_code, unused_imports)]
+
 /// Format a byte count in compact IEC units (B, KB, MB, GB, TB).
 pub fn format_bytes(value: u64, precision: usize) -> String {
     if value < 1024 {
@@ -110,6 +112,25 @@ pub fn epoch_to_civil(secs: u64) -> (u32, u32, u32, u32, u32, u32) {
     (year, m, d, hour, min, sec)
 }
 
+#[cfg(windows)]
+#[repr(C)]
+#[derive(Default)]
+struct SYSTEMTIME {
+    wYear: u16,
+    wMonth: u16,
+    wDayOfWeek: u16,
+    wDay: u16,
+    wHour: u16,
+    wMinute: u16,
+    wSecond: u16,
+    wMilliseconds: u16,
+}
+
+#[cfg(windows)]
+extern "system" {
+    fn GetLocalTime(lpSystemTime: *mut SYSTEMTIME);
+}
+
 /// Obtain current local civil date-time (Year, Month, Day, Hour, Min, Sec).
 /// Uses native OS timezone on Unix and Windows with deterministic pure-Rust fallback.
 pub fn local_now_civil() -> (u32, u32, u32, u32, u32, u32) {
@@ -133,22 +154,6 @@ pub fn local_now_civil() -> (u32, u32, u32, u32, u32, u32) {
 
     #[cfg(windows)]
     {
-        #[repr(C)]
-        #[derive(Default)]
-        #[allow(non_snake_case, dead_code)]
-        struct SYSTEMTIME {
-            wYear: u16,
-            wMonth: u16,
-            wDayOfWeek: u16,
-            wDay: u16,
-            wHour: u16,
-            wMinute: u16,
-            wSecond: u16,
-            wMilliseconds: u16,
-        }
-        extern "system" {
-            fn GetLocalTime(lpSystemTime: *mut SYSTEMTIME);
-        }
         let mut st: SYSTEMTIME = unsafe { std::mem::zeroed() };
         unsafe {
             GetLocalTime(&mut st);
