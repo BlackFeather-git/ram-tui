@@ -135,6 +135,7 @@ pub fn local_now_civil() -> (u32, u32, u32, u32, u32, u32) {
     {
         #[repr(C)]
         #[derive(Default)]
+        #[allow(non_snake_case, dead_code)]
         struct SYSTEMTIME {
             wYear: u16,
             wMonth: u16,
