@@ -1,42 +1,25 @@
 <div align="center">
 
-# ram-tui
+# RAM-TUI
 
-*A lightweight, aesthetic, zero-dependency real-time terminal memory monitor for Linux, macOS & Windows.*
+**A lightweight, aesthetic, zero-dependency real-time terminal memory monitor.**
 
-> **Small enough to understand. Accurate enough to trust. Fast enough to leave running.**
-
-<br />
-
-<img src="assets/hero.png" alt="ram-tui live terminal interface" width="860" />
+*Linux · macOS · Windows · 24-bit TrueColor · 50ms Ultra-Low Latency · Cryptographic Root of Trust*
 
 <br />
 
-**Linux · macOS · Windows · Zero Dependencies · 24-bit TrueColor · 50ms Real-Time · Cryptographic Updates**
+<img src="assets/hero.png" alt="RAM-TUI live terminal interface" width="820" />
 
 <br />
 
-[![CI](https://github.com/BlackFeather-git/ram-tui/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/BlackFeather-git/ram-tui/actions)
+[![CI](https://github.com/BlackFeather-git/ram-tui/actions/workflows/test.yml/badge.svg?branch=test)](https://github.com/BlackFeather-git/ram-tui/actions)
 [![Latest Release](https://img.shields.io/github/v/release/BlackFeather-git/ram-tui?color=brightgreen)](https://github.com/BlackFeather-git/ram-tui/releases)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-brightgreen.svg)]()
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-52%20passed-success)](tests/)
 
-<br />
-
-[Why ram-tui?](#why-ram-tui) ·
-[Features](#features) ·
-[Display Modes](#display-modes) ·
-[Quick Start](#quick-start) ·
-[Installation](#installation) ·
-[CLI Reference](#cli-reference) ·
-[Interactive Hotkeys](#interactive-hotkeys) ·
-[Status Bars](#status-bar-integration) ·
-[JSON Telemetry](#json-telemetry) ·
-[Themes](#color-themes) ·
-[Architecture](#architecture) ·
-[Security & Updates](#security--updates)
+[Why RAM-TUI?](#why-ram-tui) · [Features](#features) · [Display Modes](#display-modes) · [Quick Start](#quick-start) · [Installation](#installation) · [CLI Reference](#cli-reference) · [Color Themes](#color-themes) · [Architecture](#architecture)
 
 </div>
 
@@ -335,7 +318,7 @@ ram --json --once | jq '.memory'
 | **`kanagawa`** | <img src="assets/themes/kanagawa.png" width="400" alt="Kanagawa theme preview" /> | Wave Blue (`#7E9CD8`) → Spring Green (`#98BB6C`) → Sakura Pink (`#D27E99`) → Autumn Red (`#C34043`) |
 | **`monokai`** | <img src="assets/themes/monokai.png" width="400" alt="Monokai theme preview" /> | Cyan (`#66D9EF`) → Bright Green (`#A6E22E`) → Yellow (`#E6DB74`) → Magenta (`#F92672`) |
 | **`solarized`** | <img src="assets/themes/solarized.png" width="400" alt="Solarized theme preview" /> | Cyan (`#2AA198`) → Blue (`#268BD2`) → Warm Yellow (`#B58900`) → Red (`#DC322F`) |
-| **`default`** | <img src="assets/themes/default.png" width="400" alt="Default theme preview" /> | Green (`#4BD26E`) → Light Blue (`#64C8F0`) → Yellow (`#F0C850`) → Red (`#F05050`) |
+| **`default`** | <img src="assets/themes/default.png" width="400" alt="Default theme preview" /> | Dark Blue (`#2D55CD`) → Royal Violet (`#7350DC`) → Midnight Purple (`#B45AE1`) → Neon Lavender (`#EB8CFF`) |
 | **`monochrome`** | <img src="assets/themes/monochrome.png" width="400" alt="Monochrome theme preview" /> | Pure ANSI-free grayscale (auto-selected when `NO_COLOR` is set) |
 
 ---

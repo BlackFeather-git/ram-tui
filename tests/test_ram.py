@@ -253,7 +253,8 @@ class TerminalAndCliTests(unittest.TestCase):
             lines = rendered.splitlines()
             # On 40-row terminal with ~12 TUI lines, top padding must be present
             self.assertEqual(lines[0], "")
-            self.assertIn("█▀█ ▄▀█ █▄▀▄█", rendered)
+            self.assertIn("██████╗  █████╗", rendered)
+            self.assertIn("RAM-TUI", rendered)
             # Must not exceed terminal rows
             self.assertLessEqual(len(lines), 40)
 

@@ -31,7 +31,7 @@ import unicodedata
 import urllib.request
 from datetime import datetime
 
-__version__ = "0.7.0"
+__version__ = "0.7.0-rc.1"
 SYSTEM_OS = platform.system()
 
 PAGE_SIZE = 4096
@@ -275,14 +275,14 @@ GRAPH_SYMBOLS = ("block", "braille")
 
 THEME_PALETTES = {
     "default": {
-        "header": "\033[38;2;80;200;220m",      # Cyan
-        "accent": "\033[38;2;100;160;255m",     # Blue
-        "good": "\033[38;2;75;210;110m",        # Green
-        "warning": "\033[38;2;240;200;80m",     # Yellow
-        "critical": "\033[38;2;240;90;90m",     # Red
-        "muted": "\033[38;2;140;145;155m",      # Gray
-        "track": "\033[38;2;65;70;80m",         # Dark Gray
-        "text": "\033[38;2;235;240;245m",       # White
+        "header": "\033[38;2;180;90;225m",      # Midnight Purple (#b45ae1)
+        "accent": "\033[38;2;115;80;220m",      # Royal Violet (#7350dc)
+        "good": "\033[38;2;115;80;220m",        # Electric Violet
+        "warning": "\033[38;2;220;130;240m",    # Soft Lavender
+        "critical": "\033[38;2;245;90;120m",    # Crimson Rose
+        "muted": "\033[38;2;135;140;165m",      # Muted Slate
+        "track": "\033[38;2;48;44;68m",         # Dark Purple Track
+        "text": "\033[38;2;235;238;245m",       # Bright FG
         "dim": "\033[2m",
     },
     "dracula": {
@@ -413,7 +413,7 @@ THEME_PALETTES = {
 }
 
 THEME_GRADIENTS = {
-    "default": [(0.0, (75, 210, 110)), (0.50, (100, 200, 240)), (0.75, (240, 200, 80)), (1.0, (240, 80, 80))],
+    "default": [(0.0, (45, 85, 205)), (0.35, (115, 80, 220)), (0.70, (180, 90, 225)), (1.0, (235, 140, 255))],
     "dracula": [(0.0, (139, 233, 253)), (0.35, (189, 147, 249)), (0.70, (255, 121, 198)), (1.0, (255, 85, 85))],
     "catppuccin": [(0.0, (116, 199, 236)), (0.35, (148, 226, 213)), (0.70, (203, 166, 247)), (1.0, (243, 139, 168))],
     "nord": [(0.0, (136, 192, 208)), (0.40, (129, 161, 193)), (0.75, (235, 203, 139)), (1.0, (191, 97, 106))],
@@ -1878,49 +1878,47 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
     lines = []
     rule = f"{m}{dim}{'─' * ui_cols}{r}"
 
-    # Header line
+    # 6-line Large ASCII Banner (shown when terminal viewport is spacious)
+    banner_raw = [
+        "██████╗  █████╗ ███╗   ███╗   ████████╗██╗   ██╗██╗",
+        "██╔══██╗██╔══██╗████╗ ████║   ╚══██╔══╝██║   ██║██║",
+        "██████╔╝███████║██╔████╔██║█████╗██║   ██║   ██║██║",
+        "██╔══██╗██╔══██║██║╚██╔╝██║╚════╝██║   ██║   ██║██║",
+        "██║  ██║██║  ██║██║ ╚═╝ ██║      ██║   ╚██████╔╝██║",
+        "╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝      ╚═╝    ╚═════╝ ╚═╝",
+    ]
+    banner_w = 51
+
+    if ui_cols >= 60 and rows >= 22:
+        pad_banner = " " * max(0, (ui_cols - banner_w) // 2)
+        for b_line in banner_raw:
+            c_line = colorize_ascii_banner(b_line, pal.get("STOPS", []), banner_w, enable_color)
+            lines.append(f"{pad_banner}{c_line}")
+        lines.append("")
+
+    # Clean Header line (0.6.0 layout)
     state_str = f"  {w}{bold}paused{r}" if paused else ""
     clock = f"{m}{now_str}{r}"
     clock_w = visible_cell_width(clock)
 
-    banner_w = 26
-    if ui_cols >= 64 and rows >= 14:
-        banner_1 = colorize_ascii_banner("█▀█ ▄▀█ █▄▀▄█ ▄▄ ▀█▀ █ █ █", pal.get("STOPS", []), 26, enable_color)
-        banner_2 = colorize_ascii_banner("█▀▄ █▀█ █ ▀ █    █  █▄█ █", pal.get("STOPS", []), 26, enable_color)
-
-        clock_full = f"{m}{now_str}{r}{state_str}"
-        clock_w = visible_cell_width(clock_full)
-        if ui_cols >= 76:
-            meta_str = f"{t}{truncate_plain_cells(hostname, 16)}{r}  {m}·{r}  {m}{SYSTEM_OS} {platform.machine()}{r}  {m}·{r}  {a}{theme}{r}"
-        else:
-            meta_str = f"{t}{truncate_plain_cells(hostname, 12)}{r}  {m}·{r}  {a}{theme}{r}"
-        meta_w = visible_cell_width(meta_str)
-
-        if banner_w + clock_w + 2 <= ui_cols:
-            gap1 = ui_cols - banner_w - clock_w
-            lines.append(f"{banner_1}{' ' * gap1}{clock_full}")
-        else:
-            lines.append(banner_1)
-
-        if banner_w + meta_w + 2 <= ui_cols:
-            gap2 = ui_cols - banner_w - meta_w
-            lines.append(f"{banner_2}{' ' * gap2}{meta_str}")
-        else:
-            lines.append(banner_2)
+    if ui_cols >= 64:
+        header_left = (
+            f"{h}{bold}RAM-TUI{r}  {m}·{r}  {t}{truncate_plain_cells(hostname, 16)}{r}  {m}·{r}  "
+            f"{m}{SYSTEM_OS} {platform.machine()}{r}  {m}·{r}  {a}{theme}{r}{state_str}"
+        )
+    elif ui_cols >= 44:
+        header_left = f"{h}{bold}RAM-TUI{r}  {m}·{r}  {t}{truncate_plain_cells(hostname, 12)}{r}  {m}·{r}  {a}{theme}{r}{state_str}"
     else:
-        if ui_cols >= 44:
-            header_left = f"{h}{bold}RAM-TUI{r}  {m}·{r}  {t}{truncate_plain_cells(hostname, 12)}{r}  {m}·{r}  {a}{theme}{r}{state_str}"
-        else:
-            header_left = f"{h}{bold}RAM-TUI{r}  {m}·{r}  {a}{theme}{r}{state_str}"
+        header_left = f"{h}{bold}RAM-TUI{r}  {m}·{r}  {a}{theme}{r}{state_str}"
 
-        left_w = visible_cell_width(header_left)
-        if left_w + clock_w + 2 <= ui_cols:
-            gap = ui_cols - left_w - clock_w
-            lines.append(f"{header_left}{' ' * gap}{clock}")
-        elif left_w <= ui_cols:
-            lines.append(header_left)
-        else:
-            lines.append(clamp_line_to_cols(header_left, ui_cols))
+    left_w = visible_cell_width(header_left)
+    if left_w + clock_w + 2 <= ui_cols:
+        gap = ui_cols - left_w - clock_w
+        lines.append(f"{header_left}{' ' * gap}{clock}")
+    elif left_w <= ui_cols:
+        lines.append(header_left)
+    else:
+        lines.append(clamp_line_to_cols(header_left, ui_cols))
 
     lines.append(rule)
 
