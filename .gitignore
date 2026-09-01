@@ -10,5 +10,3 @@ env/
 *.key
 *.id_rsa
 sync.sh
-future-implementation/ram-tui-*
-future-implementation/*.exe
