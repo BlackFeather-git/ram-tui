@@ -7,10 +7,10 @@
 set -euo pipefail
 
 REPO="BlackFeather-git/ram-tui"
-BRANCH="${RAM_INSTALL_BRANCH:-main}"
+REF="${RAM_INSTALL_TAG:-${RAM_INSTALL_BRANCH:-main}}"
 BIN_DIR="${HOME}/.local/bin"
 TARGET="${BIN_DIR}/ram"
-BASE_URL="https://raw.githubusercontent.com/${REPO}/${BRANCH}"
+BASE_URL="https://raw.githubusercontent.com/${REPO}/${REF}"
 
 DRY_RUN=false
 FORCE=false
@@ -28,7 +28,7 @@ for arg in "$@"; do
     esac
 done
 
-echo -e "\033[1;36m==> Installing ram-tui (branch: ${BRANCH})...\033[0m"
+echo -e "\033[1;36m==> Installing ram-tui (ref: ${REF})...\033[0m"
 
 if [ "$DRY_RUN" = true ]; then
     echo -e "\033[1;33m[DRY-RUN] Target binary: ${TARGET}\033[0m"
@@ -66,25 +66,90 @@ fi
 # 1. Ensure target binary directory exists
 mkdir -p "${BIN_DIR}"
 
-# 2. Safe atomic download via temporary file
-TMP_BIN=$(mktemp)
+# 2. Safe atomic download via temporary directory
+TMP_DIR=$(mktemp -d)
 cleanup() {
-    rm -f "${TMP_BIN}"
+    rm -rf "${TMP_DIR}"
 }
 trap cleanup EXIT INT TERM
+
+TMP_BIN="${TMP_DIR}/ram"
+TMP_HASH="${TMP_DIR}/ram.sha256"
+TMP_SIG="${TMP_DIR}/ram.sig"
 
 echo "-> Downloading ram executable..."
 fetch_file "${BASE_URL}/ram" "${TMP_BIN}"
 
-# Verify executable is non-empty
 if [ ! -s "${TMP_BIN}" ]; then
-    echo "Error: Downloaded file is empty. Please check your network connection." >&2
+    echo "Error: Downloaded binary is empty. Aborting installation." >&2
+    exit 1
+fi
+
+echo "-> Fetching cryptographic release assets (ram.sha256, ram.sig)..."
+fetch_file "${BASE_URL}/ram.sha256" "${TMP_HASH}" || {
+    echo "Error: Failed to retrieve mandatory cryptographic SHA-256 checksum asset. Fail-closed." >&2
+    exit 1
+}
+
+fetch_file "${BASE_URL}/ram.sig" "${TMP_SIG}" || {
+    echo "Error: Failed to retrieve mandatory cryptographic RSA-2048 digital signature asset. Fail-closed." >&2
+    exit 1
+}
+
+# 1. Mandatory SHA-256 Integrity Verification
+EXPECTED_HASH=$(awk '{print $1}' "${TMP_HASH}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+if [ ${#EXPECTED_HASH} -ne 64 ]; then
+    echo "Error: Malformed SHA-256 checksum format in release asset. Aborting." >&2
+    exit 1
+fi
+
+ACTUAL_HASH=""
+if command -v sha256sum >/dev/null 2>&1; then
+    ACTUAL_HASH=$(sha256sum "${TMP_BIN}" | awk '{print $1}' | tr '[:upper:]' '[:lower:]')
+elif command -v shasum >/dev/null 2>&1; then
+    ACTUAL_HASH=$(shasum -a 256 "${TMP_BIN}" | awk '{print $1}' | tr '[:upper:]' '[:lower:]')
+elif command -v python3 >/dev/null 2>&1; then
+    ACTUAL_HASH=$(python3 -c "import hashlib; print(hashlib.sha256(open('${TMP_BIN}', 'rb').read()).hexdigest())")
+fi
+
+if [ -z "${ACTUAL_HASH}" ] || [ "${ACTUAL_HASH}" != "${EXPECTED_HASH}" ]; then
+    echo "Error: Cryptographic SHA-256 digest verification failed!" >&2
+    echo "  Expected: ${EXPECTED_HASH}" >&2
+    echo "  Actual:   ${ACTUAL_HASH:-<failed to compute>}" >&2
+    exit 1
+fi
+echo -e "\033[1;32m-> Checksum verified: SHA-256 (${ACTUAL_HASH:0:16}...)\033[0m"
+
+# 2. Mandatory Maintainer RSA-2048 Digital Signature Verification
+if command -v python3 >/dev/null 2>&1; then
+    if python3 -c "
+import importlib.machinery, importlib.util, sys
+try:
+    loader = importlib.machinery.SourceFileLoader('ram_mod', '${TMP_BIN}')
+    spec = importlib.util.spec_from_loader('ram_mod', loader)
+    m = importlib.util.module_from_spec(spec)
+    loader.exec_module(m)
+    with open('${TMP_BIN}', 'rb') as f: data = f.read()
+    with open('${TMP_SIG}', 'r', encoding='utf-8') as f: sig = f.read().strip()
+    if m.verify_release_signature(data, sig):
+        sys.exit(0)
+    sys.exit(1)
+except Exception:
+    sys.exit(2)
+"; then
+        echo -e "\033[1;32m-> Signature verified: RSA-2048 PKCS#1 v1.5 (Maintainer Root of Trust)\033[0m"
+    else
+        echo "Error: Maintainer RSA-2048 cryptographic signature verification failed. Aborting installation." >&2
+        exit 1
+    fi
+else
+    echo "Error: python3 is required to verify cryptographic release signatures. Aborting installation." >&2
     exit 1
 fi
 
 # Install executable with 0755 permissions
 install -m 0755 "${TMP_BIN}" "${TARGET}"
-echo -e "\033[1;32m-> Installed executable to: ${TARGET}\033[0m"
+echo -e "\033[1;32m-> Installed verified executable to: ${TARGET}\033[0m"
 
 # 3. Install shell completions if directories exist or can be created
 # Bash

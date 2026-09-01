@@ -5,6 +5,23 @@ All notable changes to `ram-tui` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-09-01
+
+### Added
+- **Centered 6-Line Large Block ASCII Banner**: Added prominent 6-line block ASCII title art (`RAM-TUI`), perfectly centered on top and dynamically colorized with the active theme gradient on spacious viewports (`>=22` rows, `>=60` cols).
+- **Curated Multi-Stop TrueColor Palettes Across All 13 Themes**: Re-engineered palettes and gradients for all 13 built-in themes to match official community specifications (Catppuccin Mocha, Dracula Pro, Tokyo Night, Nord Arctic, Gruvbox Dark, Cyberpunk 2077, Rosé Pine, Everforest, Kanagawa Wave, Monokai Pro, Solarized Dark, and Monochrome).
+- **Midnight Velvet & Neon Lavender Default Theme**: Introduced vibrant cyber-violet default palette with Electric Violet (`#7030EF`) -> Neon Purple (`#A846FF`) -> Vivid Fuchsia (`#DB1FFF`) -> Light Lilac (`#E0B3FF`) gradient.
+- **Visual Theme Showcase Gallery**: Expanded documentation with pixel-perfect terminal previews for all 13 built-in themes in `assets/themes/`.
+- **52 Automated Cross-Platform Tests**: Added full test coverage for gradient color stops, interpolation boundaries, and 2D centering.
+
+### Security & Hardening
+- **Mandatory Authenticated Installer Trust Chain**: Upgraded [`install.sh`](install.sh) (Linux/macOS) and [`install.ps1`](install.ps1) (Windows) to strictly enforce mandatory SHA-256 integrity checks and maintainer RSA-2048 PKCS#1 v1.5 digital signature verification (`ram.sig`) before file installation (fail-closed).
+- **Reproducible Release Tag Pinning**: Supported immutable release tag pinning via `RAM_INSTALL_TAG` / `REF` across Unix and Windows installers.
+- **Python 3.8+ Compatibility Baseline**: Formally updated runtime baseline to Python 3.8+ (retiring legacy 3.6/3.7 targets) aligned with modern typing, FFI, and CI coverage.
+- **Zero-Dependency Security Documentation**: Streamlined [`SECURITY.md`](SECURITY.md) to provide pure standard-library verification commands without external third-party package references.
+
+---
+
 ## [0.6.1] - 2026-09-01
 
 ### Added

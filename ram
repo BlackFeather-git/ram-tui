@@ -31,7 +31,7 @@ import unicodedata
 import urllib.request
 from datetime import datetime
 
-__version__ = "0.6.1"
+__version__ = "0.7.0"
 SYSTEM_OS = platform.system()
 
 PAGE_SIZE = 4096
@@ -275,20 +275,20 @@ GRAPH_SYMBOLS = ("block", "braille")
 
 THEME_PALETTES = {
     "default": {
-        "header": "\033[38;2;80;200;220m",      # Cyan
-        "accent": "\033[38;2;100;160;255m",     # Blue
-        "good": "\033[38;2;75;210;110m",        # Green
-        "warning": "\033[38;2;240;200;80m",     # Yellow
-        "critical": "\033[38;2;240;90;90m",     # Red
-        "muted": "\033[38;2;140;145;155m",      # Gray
-        "track": "\033[38;2;65;70;80m",         # Dark Gray
-        "text": "\033[38;2;235;240;245m",       # White
+        "header": "\033[38;2;219;31;255m",      # Neon Fuchsia (#db1fff)
+        "accent": "\033[38;2;112;48;239m",      # Electric Violet (#7030ef)
+        "good": "\033[38;2;112;48;239m",        # Violet Glow (#7030ef)
+        "warning": "\033[38;2;179;107;255m",    # Soft Lavender (#b36bff)
+        "critical": "\033[38;2;255;75;160m",    # Vivid Pink (#ff4ba0)
+        "muted": "\033[38;2;140;130;175m",      # Muted Indigo (#8c82af)
+        "track": "\033[38;2;35;25;58m",         # Midnight Purple Track (#23193a)
+        "text": "\033[38;2;240;235;255m",       # Light Lilac White (#f0ebff)
         "dim": "\033[2m",
     },
     "dracula": {
         "header": "\033[38;2;189;147;249m",     # Dracula Purple (#bd93f9)
         "accent": "\033[38;2;255;121;198m",     # Dracula Pink (#ff79c6)
-        "good": "\033[38;2;189;147;249m",       # Dracula Signature Purple Gauge
+        "good": "\033[38;2;80;250;123m",        # Dracula Green (#50fa7b)
         "warning": "\033[38;2;255;184;108m",    # Dracula Orange (#ffb86c)
         "critical": "\033[38;2;255;85;85m",     # Dracula Red (#ff5555)
         "muted": "\033[38;2;98;114;164m",       # Dracula Comment (#6272a4)
@@ -299,106 +299,106 @@ THEME_PALETTES = {
     "catppuccin": {
         "header": "\033[38;2;203;166;247m",     # Mauve (#cba6f7)
         "accent": "\033[38;2;116;199;236m",     # Sapphire (#74c7ec)
-        "good": "\033[38;2;203;166;247m",       # Signature Mauve Gauge
+        "good": "\033[38;2;166;227;161m",       # Green (#a6e3a1)
         "warning": "\033[38;2;249;226;175m",    # Peach/Yellow (#f9e2af)
         "critical": "\033[38;2;243;139;168m",   # Maroon/Red (#f38ba8)
-        "muted": "\033[38;2;147;153;178m",      # Overlay0 (#9399b2)
-        "track": "\033[38;2;69;71;90m",         # Surface1 (#45475a)
+        "muted": "\033[38;2;108;112;134m",      # Overlay0 (#6c7086)
+        "track": "\033[38;2;49;50;68m",         # Surface0 (#313244)
         "text": "\033[38;2;205;214;244m",       # Text (#cdd6f4)
         "dim": "\033[2m",
     },
     "nord": {
         "header": "\033[38;2;136;192;208m",     # Frost Cyan (Nord8)
         "accent": "\033[38;2;129;161;193m",     # Frost Blue (Nord9)
-        "good": "\033[38;2;136;192;208m",       # Signature Frost Cyan Gauge
-        "warning": "\033[38;2;235;203;139m",    # Yellow (Nord13)
-        "critical": "\033[38;2;191;97;106m",    # Red (Nord11)
-        "muted": "\033[38;2;216;222;233m",      # Snow Storm (Nord4)
-        "track": "\033[38;2;76;86;106m",        # Polar Night (Nord3)
-        "text": "\033[38;2;236;239;244m",       # White (Nord6)
+        "good": "\033[38;2;163;190;140m",       # Aurora Green (Nord14)
+        "warning": "\033[38;2;235;203;139m",    # Aurora Yellow (Nord13)
+        "critical": "\033[38;2;191;97;106m",    # Aurora Red (Nord11)
+        "muted": "\033[38;2;123;136;161m",      # Muted (Nord4/Nord9 mix)
+        "track": "\033[38;2;59;66;82m",         # Polar Night (Nord1)
+        "text": "\033[38;2;236;239;244m",       # Snow Storm (Nord6)
         "dim": "\033[2m",
     },
     "tokyo-night": {
         "header": "\033[38;2;125;207;255m",     # Storm Cyan (#7dcfff)
-        "accent": "\033[38;2;187;154;247m",     # Purple (#bb9af7)
-        "good": "\033[38;2;125;207;255m",       # Storm Cyan Gauge
+        "accent": "\033[38;2;187;154;247m",     # Magenta (#bb9af7)
+        "good": "\033[38;2;158;206;106m",       # Green (#9ece6a)
         "warning": "\033[38;2;224;175;104m",    # Yellow (#e0af68)
         "critical": "\033[38;2;247;118;142m",   # Red (#f7768e)
-        "muted": "\033[38;2;115;126;162m",      # Blue-Gray (#737ea2)
-        "track": "\033[38;2;65;72;104m",        # Dark Track
-        "text": "\033[38;2;192;202;245m",       # Foreground (#c0caf5)
+        "muted": "\033[38;2;86;95;137m",        # Comment (#565f89)
+        "track": "\033[38;2;41;46;66m",         # Dark Track (#292e42)
+        "text": "\033[38;2;192;202;245m",       # FG (#c0caf5)
         "dim": "\033[2m",
     },
     "gruvbox": {
         "header": "\033[38;2;254;128;25m",      # Bright Orange (#fe8019)
         "accent": "\033[38;2;142;192;124m",     # Aqua (#8ec07c)
-        "good": "\033[38;2;142;192;124m",       # Aqua Gauge
+        "good": "\033[38;2;184;187;38m",        # Bright Green (#b8bb26)
         "warning": "\033[38;2;250;189;47m",     # Yellow (#fabd2f)
         "critical": "\033[38;2;251;73;52m",     # Red (#fb4934)
         "muted": "\033[38;2;146;131;116m",      # Gray (#928374)
-        "track": "\033[38;2;60;56;54m",         # Dark Track (#3c3836)
+        "track": "\033[38;2;60;56;54m",         # Track (#3c3836)
         "text": "\033[38;2;235;219;178m",       # Light FG (#ebdbb2)
         "dim": "\033[2m",
     },
     "cyberpunk": {
-        "header": "\033[38;2;0;229;255m",       # Neon Cyan (#00e5ff)
-        "accent": "\033[38;2;255;42;157m",      # Neon Pink (#ff2a9d)
-        "good": "\033[38;2;255;42;157m",        # Hot Pink Gauge
-        "warning": "\033[38;2;244;255;0m",      # Neon Yellow (#f4ff00)
+        "header": "\033[38;2;0;240;255m",       # Neon Cyan (#00f0ff)
+        "accent": "\033[38;2;255;0;127m",       # Hot Pink (#ff007f)
+        "good": "\033[38;2;0;240;255m",         # Neon Cyan
+        "warning": "\033[38;2;254;232;1m",      # Electric Yellow (#fee801)
         "critical": "\033[38;2;255;0;60m",      # Crimson (#ff003c)
-        "muted": "\033[38;2;113;113;138m",      # Purple-Gray
-        "track": "\033[38;2;45;35;60m",         # Track Dark
-        "text": "\033[38;2;245;245;255m",       # White Glow
+        "muted": "\033[38;2;153;0;255m",        # Neon Purple (#9900ff)
+        "track": "\033[38;2;45;18;77m",         # Dark Night (#2d124d)
+        "text": "\033[38;2;240;246;252m",       # White Glow
         "dim": "\033[2m",
     },
     "rose-pine": {
         "header": "\033[38;2;196;167;231m",     # Iris (#c4a7e7)
-        "accent": "\033[38;2;235;111;146m",     # Love (#eb6f92)
-        "good": "\033[38;2;196;167;231m",       # Iris Gauge
+        "accent": "\033[38;2;156;207;216m",     # Foam (#9ccfd8)
+        "good": "\033[38;2;156;207;216m",       # Foam (#9ccfd8)
         "warning": "\033[38;2;246;193;119m",    # Gold (#f6c177)
-        "critical": "\033[38;2;235;111;146m",   # Love Red (#eb6f92)
+        "critical": "\033[38;2;235;111;146m",   # Love (#eb6f92)
         "muted": "\033[38;2;110;106;134m",      # Muted (#6e6a86)
-        "track": "\033[38;2;57;53;82m",         # Surface (#393552)
+        "track": "\033[38;2;38;35;58m",         # Track (#26233a)
         "text": "\033[38;2;224;222;244m",       # Text (#e0def4)
         "dim": "\033[2m",
     },
     "everforest": {
         "header": "\033[38;2;167;192;128m",     # Forest Green (#a7c080)
-        "accent": "\033[38;2;131;192;146m",     # Sage (#83c092)
-        "good": "\033[38;2;167;192;128m",       # Forest Green Gauge
+        "accent": "\033[38;2;135;192;149m",     # Aqua (#87c095)
+        "good": "\033[38;2;167;192;128m",       # Green (#a7c080)
         "warning": "\033[38;2;219;188;127m",    # Yellow (#dbbc7f)
         "critical": "\033[38;2;230;126;128m",   # Red (#e67e80)
         "muted": "\033[38;2;133;146;137m",      # Muted (#859289)
-        "track": "\033[38;2;55;65;69m",         # Dark Track
-        "text": "\033[38;2;211;198;170m",       # Light Text (#d3c6aa)
+        "track": "\033[38;2;55;65;69m",         # Dark Track (#374145)
+        "text": "\033[38;2;211;198;170m",       # Text (#d3c6aa)
         "dim": "\033[2m",
     },
     "kanagawa": {
         "header": "\033[38;2;126;156;216m",     # Wave Blue (#7e9cd8)
         "accent": "\033[38;2;210;126;153m",     # Sakura Pink (#d27e99)
-        "good": "\033[38;2;126;156;216m",       # Wave Blue Gauge
-        "warning": "\033[38;2;255;160;102m",    # Surimi Orange (#ffa066)
+        "good": "\033[38;2;152;187;108m",       # Spring Green (#98bb6c)
+        "warning": "\033[38;2;230;195;132m",    # Boat Yellow (#e6c384)
         "critical": "\033[38;2;195;64;67m",     # Autumn Red (#c34043)
-        "muted": "\033[38;2;114;113;105m",      # Muted Fuji
-        "track": "\033[38;2;54;54;70m",         # Sumi Ink
-        "text": "\033[38;2;220;215;186m",       # Fuji White (#dcd7ba)
+        "muted": "\033[38;2;114;113;105m",      # Muted Fuji (#727169)
+        "track": "\033[38;2;34;50;73m",         # Sumi Ink (#223249)
+        "text": "\033[38;2;220;215;186m",       # Fuji (#dcd7ba)
         "dim": "\033[2m",
     },
     "monokai": {
-        "header": "\033[38;2;249;38;114m",      # Magenta (#f92672)
-        "accent": "\033[38;2;102;217;239m",     # Cyan (#66d9ef)
-        "good": "\033[38;2;166;226;46m",        # Bright Green (#a6e22e)
-        "warning": "\033[38;2;230;219;116m",    # Yellow (#e6db74)
-        "critical": "\033[38;2;249;38;114m",    # Magenta/Red (#f92672)
-        "muted": "\033[38;2;117;113;94m",       # Comment Gray
-        "track": "\033[38;2;62;61;50m",         # Dark Track
-        "text": "\033[38;2;248;248;242m",       # FG
+        "header": "\033[38;2;255;97;136m",      # Magenta Pink (#ff6188)
+        "accent": "\033[38;2;120;220;232m",     # Cyan (#78dce8)
+        "good": "\033[38;2;169;220;118m",       # Bright Green (#a9dc76)
+        "warning": "\033[38;2;255;216;102m",    # Yellow (#ffd866)
+        "critical": "\033[38;2;255;97;136m",    # Magenta Red (#ff6188)
+        "muted": "\033[38;2;114;112;114m",      # Muted (#727072)
+        "track": "\033[38;2;64;62;65m",         # Track (#403e41)
+        "text": "\033[38;2;252;252;250m",       # FG (#fcfcfa)
         "dim": "\033[2m",
     },
     "solarized": {
         "header": "\033[38;2;42;161;152m",      # Cyan (#2aa198)
         "accent": "\033[38;2;38;139;210m",      # Blue (#268bd2)
-        "good": "\033[38;2;42;161;152m",        # Cyan Gauge
+        "good": "\033[38;2;133;153;0m",         # Green (#859900)
         "warning": "\033[38;2;181;137;0m",      # Yellow (#b58900)
         "critical": "\033[38;2;220;50;47m",     # Red (#dc322f)
         "muted": "\033[38;2;101;123;131m",      # Base00 (#657b83)
@@ -412,9 +412,70 @@ THEME_PALETTES = {
     },
 }
 
+THEME_GRADIENTS = {
+    "default": [(0.0, (112, 48, 239)), (0.35, (168, 70, 255)), (0.70, (219, 31, 255)), (1.0, (224, 179, 255))],
+    "catppuccin": [(0.0, (116, 199, 236)), (0.30, (148, 226, 213)), (0.60, (203, 166, 247)), (0.85, (245, 194, 231)), (1.0, (243, 139, 168))],
+    "dracula": [(0.0, (139, 233, 253)), (0.30, (189, 147, 249)), (0.60, (255, 121, 198)), (0.85, (255, 184, 108)), (1.0, (255, 85, 85))],
+    "tokyo-night": [(0.0, (125, 207, 255)), (0.35, (122, 162, 247)), (0.65, (187, 154, 247)), (0.85, (255, 158, 100)), (1.0, (247, 118, 142))],
+    "nord": [(0.0, (143, 188, 187)), (0.30, (136, 192, 208)), (0.60, (129, 161, 193)), (0.80, (180, 142, 173)), (1.0, (191, 97, 106))],
+    "gruvbox": [(0.0, (142, 192, 124)), (0.30, (184, 187, 38)), (0.60, (250, 189, 47)), (0.85, (254, 128, 25)), (1.0, (251, 73, 52))],
+    "cyberpunk": [(0.0, (0, 240, 255)), (0.30, (254, 232, 1)), (0.60, (255, 0, 127)), (0.85, (153, 0, 255)), (1.0, (255, 0, 60))],
+    "rose-pine": [(0.0, (156, 207, 216)), (0.30, (196, 167, 231)), (0.60, (246, 193, 119)), (0.85, (235, 188, 186)), (1.0, (235, 111, 146))],
+    "everforest": [(0.0, (135, 192, 149)), (0.30, (167, 192, 128)), (0.60, (219, 188, 127)), (0.85, (230, 152, 117)), (1.0, (230, 126, 128))],
+    "kanagawa": [(0.0, (126, 156, 216)), (0.30, (152, 187, 108)), (0.60, (230, 195, 132)), (0.85, (210, 126, 153)), (1.0, (195, 64, 67))],
+    "monokai": [(0.0, (120, 220, 232)), (0.30, (169, 220, 118)), (0.60, (255, 216, 102)), (0.85, (252, 152, 103)), (1.0, (255, 97, 136))],
+    "solarized": [(0.0, (42, 161, 152)), (0.30, (38, 139, 210)), (0.60, (108, 113, 196)), (0.85, (181, 137, 0)), (1.0, (220, 50, 47))],
+    "monochrome": [],
+}
+
 BLOCK_FRACTIONS = ["", "▏", "▎", "▍", "▌", "▋", "▊", "▉"]
 BLOCK_FULL = "█"
 BLOCK_TRACK = "░"
+
+
+def interpolate_color(stops, pos):
+    """Interpolates RGB tuple from gradient color stops across position [0.0, 1.0]."""
+    pos = max(0.0, min(1.0, float(pos)))
+    if not stops:
+        return None
+    if len(stops) == 1 or pos <= stops[0][0]:
+        return stops[0][1]
+    if pos >= stops[-1][0]:
+        return stops[-1][1]
+    for i in range(len(stops) - 1):
+        p1, c1 = stops[i]
+        p2, c2 = stops[i + 1]
+        if p1 <= pos <= p2:
+            span = p2 - p1
+            if span <= 0:
+                return c1
+            t = (pos - p1) / span
+            r = int(round(c1[0] + (c2[0] - c1[0]) * t))
+            g = int(round(c1[1] + (c2[1] - c1[1]) * t))
+            b = int(round(c1[2] + (c2[2] - c1[2]) * t))
+            return (r, g, b)
+    return stops[-1][1]
+
+
+def rgb_to_ansi(rgb):
+    """Formats RGB tuple to 24-bit TrueColor ANSI foreground escape sequence."""
+    if rgb is None:
+        return ""
+    return f"\033[38;2;{rgb[0]};{rgb[1]};{rgb[2]}m"
+
+
+def colorize_ascii_banner(line, stops, max_w=26, enable_color=True):
+    """Colorizes a single banner string line across a smooth horizontal gradient."""
+    if not enable_color or not stops:
+        return line
+    res = []
+    for i, ch in enumerate(line):
+        if ch == " ":
+            res.append(" ")
+        else:
+            c = rgb_to_ansi(interpolate_color(stops, i / max(1, max_w)))
+            res.append(f"{c}{ch}")
+    return "".join(res) + "\033[0m"
 
 
 def should_use_color(is_interactive=True):
@@ -427,12 +488,13 @@ def should_use_color(is_interactive=True):
 
 
 def get_palette(theme_name="default", enable_color=True):
-    """Returns ANSI codes dictionary for the active theme."""
+    """Returns ANSI codes dictionary and gradient stops for the active theme."""
     if not enable_color or theme_name == "monochrome" or theme_name not in THEME_PALETTES:
         return {
             "RESET": "", "BOLD": "", "DIM": "",
             "HEADER": "", "ACCENT": "", "GOOD": "", "WARNING": "",
             "CRITICAL": "", "MUTED": "", "TRACK": "", "TEXT": "",
+            "STOPS": [],
         }
     
     t = THEME_PALETTES[theme_name]
@@ -448,6 +510,7 @@ def get_palette(theme_name="default", enable_color=True):
         "MUTED": t["muted"],
         "TRACK": t["track"],
         "TEXT": t["text"],
+        "STOPS": THEME_GRADIENTS.get(theme_name, []),
     }
 
 
@@ -1688,29 +1751,39 @@ class UpdateManager:
 # Minimalist, Breathable Modern UI Rendering Engine
 # ---------------------------------------------------------------------------
 
-def render_meter_track(ratio, width=32, pal=None, symbol="block", color=None):
-    """Renders progress bar with sub-character accuracy in Block or Braille style."""
+def render_meter_track(ratio, width=32, pal=None, symbol="block", color=None, stops=None):
+    """Renders progress bar with sub-character accuracy and smooth TrueColor gradients."""
     pal = pal or get_palette("monochrome", False)
     ratio = clamp(ratio, 0.0, 1.0)
     width = max(1, width)
-
-    if color is not None:
-        c = color
-    else:
-        if ratio < 0.60:
-            c = pal["GOOD"]
-        elif ratio < 0.85:
-            c = pal["WARNING"]
-        else:
-            c = pal["CRITICAL"]
+    gradient_stops = stops if stops is not None else pal.get("STOPS", [])
 
     if symbol == "braille":
         total_steps = int(round(ratio * width * 2))
         full_blocks = total_steps // 2
         rem_steps = total_steps % 2
         empty_blocks = max(0, width - full_blocks - (1 if rem_steps > 0 else 0))
-        frac_char = "⡇" if rem_steps == 1 else ""
-        filled_part = f"{c}{'⣿' * full_blocks}{frac_char}{pal['RESET']}"
+        
+        filled_parts = []
+        for i in range(full_blocks):
+            if color is not None:
+                c = color
+            elif gradient_stops:
+                c = rgb_to_ansi(interpolate_color(gradient_stops, (i + 0.5) / width))
+            else:
+                c = pal["GOOD"] if ratio < 0.60 else (pal["WARNING"] if ratio < 0.85 else pal["CRITICAL"])
+            filled_parts.append(f"{c}⣿")
+            
+        if rem_steps == 1:
+            if color is not None:
+                c = color
+            elif gradient_stops:
+                c = rgb_to_ansi(interpolate_color(gradient_stops, (full_blocks + 0.5) / width))
+            else:
+                c = pal["GOOD"] if ratio < 0.60 else (pal["WARNING"] if ratio < 0.85 else pal["CRITICAL"])
+            filled_parts.append(f"{c}⡇")
+            
+        filled_part = "".join(filled_parts) + pal["RESET"]
         empty_part = f"{pal['TRACK']}{BLOCK_TRACK * empty_blocks}{pal['RESET']}"
         return f"{filled_part}{empty_part}"
     else:
@@ -1718,7 +1791,27 @@ def render_meter_track(ratio, width=32, pal=None, symbol="block", color=None):
         full_blocks = total_eighths // 8
         rem_eighths = total_eighths % 8
         empty_blocks = max(0, width - full_blocks - (1 if rem_eighths > 0 else 0))
-        filled_part = f"{c}{BLOCK_FULL * full_blocks}{BLOCK_FRACTIONS[rem_eighths]}{pal['RESET']}"
+        
+        filled_parts = []
+        for i in range(full_blocks):
+            if color is not None:
+                c = color
+            elif gradient_stops:
+                c = rgb_to_ansi(interpolate_color(gradient_stops, (i + 0.5) / width))
+            else:
+                c = pal["GOOD"] if ratio < 0.60 else (pal["WARNING"] if ratio < 0.85 else pal["CRITICAL"])
+            filled_parts.append(f"{c}{BLOCK_FULL}")
+            
+        if rem_eighths > 0:
+            if color is not None:
+                c = color
+            elif gradient_stops:
+                c = rgb_to_ansi(interpolate_color(gradient_stops, (full_blocks + 0.5) / width))
+            else:
+                c = pal["GOOD"] if ratio < 0.60 else (pal["WARNING"] if ratio < 0.85 else pal["CRITICAL"])
+            filled_parts.append(f"{c}{BLOCK_FRACTIONS[rem_eighths]}")
+            
+        filled_part = "".join(filled_parts) + pal["RESET"]
         empty_part = f"{pal['TRACK']}{BLOCK_TRACK * empty_blocks}{pal['RESET']}"
         return f"{filled_part}{empty_part}"
 
@@ -1785,7 +1878,25 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
     lines = []
     rule = f"{m}{dim}{'─' * ui_cols}{r}"
 
-    # Header line
+    # 6-line Large ASCII Banner (shown when terminal viewport is spacious)
+    banner_raw = [
+        "██████╗  █████╗ ███╗   ███╗   ████████╗██╗   ██╗██╗",
+        "██╔══██╗██╔══██╗████╗ ████║   ╚══██╔══╝██║   ██║██║",
+        "██████╔╝███████║██╔████╔██║█████╗██║   ██║   ██║██║",
+        "██╔══██╗██╔══██║██║╚██╔╝██║╚════╝██║   ██║   ██║██║",
+        "██║  ██║██║  ██║██║ ╚═╝ ██║      ██║   ╚██████╔╝██║",
+        "╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝      ╚═╝    ╚═════╝ ╚═╝",
+    ]
+    banner_w = 51
+
+    if ui_cols >= 60 and rows >= 22:
+        pad_banner = " " * max(0, (ui_cols - banner_w) // 2)
+        for b_line in banner_raw:
+            c_line = colorize_ascii_banner(b_line, pal.get("STOPS", []), banner_w, enable_color)
+            lines.append(f"{pad_banner}{c_line}")
+        lines.append("")
+
+    # Clean Header line (0.6.0 layout)
     state_str = f"  {w}{bold}paused{r}" if paused else ""
     clock = f"{m}{now_str}{r}"
     clock_w = visible_cell_width(clock)
@@ -1876,9 +1987,9 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
                 p_pct_str = f"{p_pct:>5.1f}%"
                 p_color = g if p_pct < 40 else (w if p_pct < 70 else crit)
                 p_ratio = p["rss"] / max(1, procs[0]["rss"])
-                p_meter = render_meter_track(p_ratio, width=p_bar_w, pal=pal, symbol=symbol, color=p_color)
+                p_meter = render_meter_track(p_ratio, width=p_bar_w, pal=pal, symbol=symbol, stops=pal.get("STOPS"))
 
-                p_line = f"{t}{name_padded}{r}   {g}{rss_str}{r}   {p_meter}   {m}{p_pct_str:>6}{r}"
+                p_line = f"{t}{name_padded}{r}   {t}{bold}{rss_str}{r}   {p_meter}   {m}{p_pct_str:>6}{r}"
                 lines.append(clamp_line_to_cols(p_line, ui_cols))
 
     # Footer & Help Overlay (C-003)
