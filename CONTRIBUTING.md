@@ -1,73 +1,61 @@
 # Contributing to ram-tui
 
-Thank you for your interest in contributing to `ram-tui`.
-
-`ram-tui` is a minimalist, ultra-low-latency terminal memory monitor engineered for accuracy, speed, and safety.
+Thank you for your interest in contributing to `ram-tui`!
 
 ---
 
-## Core Guarantees & Non-Negotiables
+## 1. Design Principles & Invariants
 
-Before submitting a pull request, ensure your proposed changes adhere strictly to the project's core invariants:
-
-1. **Zero External Dependencies**:
-   * The runtime must remain 100% standard library (`argparse`, `ctypes`, `subprocess`, `ast`, `hmac`, `unicodedata`).
-   * No `pip` requirements, third-party packages, or wheel dependencies are accepted.
-
-2. **Cross-Platform Parity**:
-   * Features must function deterministically across **Linux**, **macOS**, and **Windows**.
-   * Linux telemetry uses `/proc`. macOS telemetry uses `sysctl`/`vm_stat`. Windows telemetry uses Win32 PSAPI ctypes.
-
-3. **Sub-Millisecond Performance**:
-   * The frame rendering cycle must maintain sub-millisecond execution (<1ms/frame) with <0.6% CPU footprint.
-   * Process parsing and width caching must remain $O(N)$ with LRU fast paths.
-
-4. **Terminal & 2D Geometry Safety**:
-   * All rendered text lines must strictly clamp within terminal bounds (`cols` and `rows`).
-   * No line wrapping, screen stutter, or scrollback pollution.
-
-5. **Cryptographic Integrity**:
-   * All update logic must maintain fail-closed RSA-2048 and SHA-256 validation.
+* **Zero Unnecessary Dependencies**: Use lightweight, audited standard library or ecosystem primitives.
+* **Sub-Millisecond Execution**: Memory collection and rendering loops must complete in <1.0ms.
+* **100% Rust Memory Safety**: Avoid unnecessary `unsafe` blocks. FFI code in `collector_linux` must have strict bounds checks.
+* **Zero Emojis**: Maintain a clean, professional, high-density terminal interface.
+* **Cross-Platform Parity**: Features should maintain semantic parity across Linux, macOS, and Windows where possible.
 
 ---
 
-## Development Setup
+## 2. Workspace Architecture
 
-1. **Clone the Repository**:
-   ```bash
-   git clone https://github.com/BlackFeather-git/ram-tui.git
-   cd ram-tui
-   ```
+The project is structured as a modular Cargo workspace:
 
-2. **Run the Test Suite**:
-   ```bash
-   python3 -m unittest discover tests
-   ```
-
-3. **Validate Bytecode Compilation**:
-   ```bash
-   python3 -m compileall ram
-   ```
-
-4. **Smoke-Test Local Invocations**:
-   ```bash
-   python3 ram --version
-   python3 ram --once
-   python3 ram --compact --once
-   python3 ram --mini --once
-   python3 ram --tiny --once
-   python3 ram --json --once
-   ```
+* **`core_render`**: UTF-8 terminal cell-width calculation, TrueColor ANSI interpolation, IEC unit formatting, sparkline generation, and differential frame buffering.
+* **`collector_linux`**: Single-pass procfs `/proc/meminfo` parser, candidate-gated `/proc/<pid>/smaps_rollup` PSS/USS engine, Cgroups v2/v1 container detector, and macOS Mach / Windows PSAPI native subsystems.
+* **`ui`**: 13 TrueColor theme palettes, responsive layout budgeting, interactive theme picker modal, and raw terminal management.
+* **`cli`**: Binary targets (`ram` and `ram-tui`), CLI flag parsing via `clap`, JSON snapshot export, and interactive event loop.
 
 ---
 
-## Pull Request Guidelines
+## 3. Development Workflow
 
-1. **Branch Off `test`**:
-   * Feature branches and pull requests should target the `test` branch (active development area).
+### Prerequisites
+* Rust 1.70.0+ (stable toolchain)
+* Linux, macOS, or Windows
 
-2. **Add Unit Tests**:
-   * All bug fixes and feature additions must include corresponding unit tests in `tests/test_ram.py` or `tests/test_update_flow.py`.
+### Building the Project
+```bash
+cargo build --workspace
+```
 
-3. **Maintain Zero-Emoji Policy**:
-   * All code, terminal outputs, error messages, and documentation must have zero emojis.
+### Running Tests
+```bash
+cargo test --workspace
+```
+
+### Running Linter
+```bash
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all -- --check
+```
+
+### Running Benchmarks
+```bash
+cargo bench
+```
+
+---
+
+## 4. Pull Request Guidelines
+
+1. **Keep Commits Clean & Focused**: Use clear commit messages adhering to standard conventions.
+2. **Include Unit Tests**: Any new telemetry collection or rendering feature must include unit tests.
+3. **Preserve Documentation**: Update `CHANGELOG.md` and relevant markdown documents for any user-facing changes.

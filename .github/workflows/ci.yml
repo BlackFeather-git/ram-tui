@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main, test]
+  pull_request:
+    branches: [main, test]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Check Formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lint (Clippy)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Run Workspace Tests
+        run: cargo test --workspace
+
+      - name: Build Release Binary
+        run: cargo build -p cli --release
+
+      - name: JSON Schema Validation
+        run: |
+          cargo run -p cli -- --once --json | python3 -c "
+          import json, sys
+          d = json.load(sys.stdin)
+          assert 'memory' in d
+          assert 'top_processes' in d
+          assert d['os'] == 'Linux'
+          print('JSON schema OK')
+          "

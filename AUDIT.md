@@ -1,60 +1,63 @@
-# ram-tui — Maintainer Architectural Audit Log
+# ram-tui — Maintainer Architectural & Security Audit Log
 
 Date: 2026-09-01  
 Maintainer: Raven (BlackFeather) https://github.com/BlackFeather-git/ram-tui  
-Latest Verified State: `v0.7.0` (12-job CI matrix verified across Ubuntu, macOS, and Windows)  
-Historical Reference: Initial audit completed at `v0.4.3`, hardened through `v0.5.x` and `v0.6.x` to `v0.7.0`.
+Latest Verified State: `v1.0.0-rc.1` (Native Rust Architecture & Deep Kernel Telemetry)  
+Historical Reference: Initial audit completed at `v0.4.3`, hardened through `v0.5.x`–`v0.7.0` (Python), and fully re-architected in Rust for `v1.0.0-rc.1`.
 
 ---
 
 ## 1. Executive Summary
 
-`ram-tui` is a single-file, zero-external-dependency terminal memory monitor supporting **Linux, macOS, and Windows**. It provides dynamic visual usage tracks, memory breakdown, process grouping, 13 TrueColor themes, sub-millisecond differential rendering, cryptographic in-place updates, and machine-readable JSON exports.
+`ram-tui v1.0.0-rc.1` is a standalone, ultra-low-overhead terminal memory monitor and process telemetry engine written in pure, native Rust. It delivers sub-millisecond execution latency, a 2.2MB stripped binary footprint, and deep kernel telemetry (PSS, USS, Cgroups v2/v1 container detection).
 
-This document details the resolution of all confirmed peer audit findings (`C-001` through `C-305`), explicit 64-bit FFI declarations, platform semantics, cryptographic trust chain, and CI verification.
+This document details the architectural integrity, resolution of confirmed audit findings (`C-001` through `C-405`), memory safety guarantees, zero-allocation render loop, and multi-platform native subsystems.
 
 ---
 
 ## 2. Platform Architecture & Data Sources
 
 | Platform | System Memory Source | Process Inspection | Architecture Notes |
-|---|---|---|---|
-| **Linux** | `/proc/meminfo`, `/proc/swaps`, `/sys/block/zram*` | `/proc/<pid>/statm`, `/proc/<pid>/comm`, `/proc/<pid>/stat` | Direct zero-subprocess `/proc` parsing with documented field 22 (`starttime`) cache to prevent PID-reuse races. |
-| **macOS** | `vm_stat`, `sysctl` (`hw.memsize`, `vm.swapusage`) | `ps -axo pid,rss,comm` | Direct sysctl and Mach page calculations with non-negative arithmetic bounds and 1.0s timeout. |
-| **Windows** | `GlobalMemoryStatusEx`, `GetPerformanceInfo` (PSAPI) | Tool Help API (`CreateToolhelp32Snapshot`) + `GetProcessMemoryInfo` | Pure `ctypes` Win32 API calls with explicit pointer-sized FFI types (`restype`/`argtypes`) and robust `INVALID_HANDLE_VALUE` sentinel checks. Restores initial console modes on exit. |
+|:---|:---|:---|:---|
+| **Linux** | `/proc/meminfo`, `/proc/swaps`, `/sys/block/zram*`, Cgroups v2/v1 | `/proc/<pid>/statm`, `/proc/<pid>/comm`, `/proc/<pid>/smaps_rollup` (PSS/USS) | Single-pass zero-subprocess procfs scanning. Fast RSS candidate pre-filtering ensures `smaps_rollup` page table inspections complete in <0.5ms. |
+| **macOS (Darwin)** | Mach kernel `host_statistics64` (`HOST_VM_INFO64`), `sysctlbyname` (`hw.memsize`, `vm.swapusage`) | `proc_listpids` (`PROC_ALL_PIDS`), `proc_pidinfo` (`PROC_PIDTASKINFO`) | Pure Mach kernel FFI via `libc`. Zero subprocess fork/exec overhead. Direct page-to-byte sizing with non-negative arithmetic bounds. |
+| **Windows** | Win32 `GlobalMemoryStatusEx` (`MEMORYSTATUSEX`) | PSAPI `K32EnumProcesses` + `K32GetProcessMemoryInfo` | Direct Win32 API FFI. Captures physical Working Set Size (RSS) and Private Commit (USS) with robust `INVALID_HANDLE_VALUE` sentinel checks. |
 
 ---
 
-## 3. Resolution of Confirmed Findings
+## 3. Resolution of Findings & Architectural Hardening
 
-1. **`C-301` (Cryptographic Root of Trust)**: Embedded maintainer RSA-2048 public key modulus (`RELEASE_PUBLIC_KEY_N`) and exponent (`RELEASE_PUBLIC_KEY_E`) mathematically verify release digital signatures (`ram.sig`) using pure standard-library arithmetic with strict representative bounds (`0 < s < n`) and `hmac.compare_digest()`.
-2. **`C-302` (AST Semantic Source Verification)**: Uses `ast.parse()` to extract top-level `__version__` declarations and verify `if __name__ == "__main__":` entry blocks, preventing docstring/comment spoofing.
-3. **`C-303` (TOCTOU & Symlink Guard)**: Verifies physical file and parent directory authenticity immediately prior to atomic `os.replace()` update.
-4. **`C-304` (Dynamic Horizontal Centering & SIGWINCH Resize Handling)**: Centers dashboard layout on wide viewports ($>80$ cols), catches `SIGWINCH` resize signals, and appends `\033[K` on every line to eliminate reflow ghost artifacts.
-5. **`C-305` (Offline-First Background Checker)**: Implements 12-hour default cache interval (`RAM_UPDATE_INTERVAL`), inter-process file locking, and non-intrusive footer notifications.
-6. **`C-201` (Windows Snapshot Error Sentinel Check)**: Explicitly compares `CreateToolhelp32Snapshot` against `c_void_p(-1).value`.
-7. **`C-101` (Windows 64-bit FFI Declarations)**: Defined explicit `argtypes` and pointer-sized `restype` ensuring ABI correctness on 64-bit Windows.
-8. **`C-102` (Windows Unavailable Cache Semantics)**: `cached` is set to `None` and rendered as `N/A` if unavailable.
-9. **`C-001` (Universal Python Compatibility)**: 100% standard library compatible across Python 3.6 through 3.14+ on Linux, macOS, and Windows.
-10. **`C-003` (Linux Starttime Identity)**: Keyed the process name cache by `(pid, starttime)` where `starttime` is extracted directly from field 22 of `/proc/<pid>/stat`.
-11. **`C-008` (True ANSI Stripping)**: `sanitize_text()` completely strips full ANSI escape sequences, ASCII control codes, and Unicode directional overrides.
-12. **`C-009` (Idempotent Terminal Restore)**: `TerminalManager` guarantees idempotent buffer cleanup across signals, atexit, and normal termination.
+1. **`C-401` (Deep Kernel Telemetry: PSS & USS)**: Integrated `/proc/<pid>/smaps_rollup` parsing to report true proportional memory consumption (PSS) and private dirty/clean memory (USS), eliminating shared-library overcounting in multi-process workloads.
+2. **`C-402` (Container Boundary Detection)**: Implemented Linux Cgroups v2 (`/sys/fs/cgroup/memory.max`) and Cgroups v1 limit detection, automatically reflecting container memory constraints in Docker, Podman, and Kubernetes.
+3. **`C-403` (Flicker-Free Differential Frame Buffer)**: Developed double-buffered frame diffing in `core_render::framebuf::FrameBuffer`, emitting only modified rows per frame to eliminate terminal flicker and reduce I/O overhead.
+4. **`C-404` (Auto-Ranging Dynamic Sparkline)**: Implemented dynamic spread calculation ($\Delta = \max - \min$) over the 60-second historical window in `core_render::sparkline::render_sparkline`, rendering responsive fluid wave glyphs (` ▂▃▄▅▆▇█`).
+5. **`C-405` (Bounded Cursor & Interactive Filter Stability)**: Bounded `selected_idx` strictly to `filtered_procs.len().saturating_sub(1)` and separated search typing state (`search_active`) from locked filter state (`search_query`).
+6. **`C-301` (Cryptographic Trust Chain & In-Place Updater)**: Implemented atomic temporary file replacement (`.ram-update-*.tmp` + `fsync` + `chmod 755` + `std::fs::rename`) with strict SHA-256 digest validation.
+7. **`C-303` (TOCTOU & Symlink Guard)**: Prevents symlink hijacking by validating the physical binary path and directory write permissions prior to atomic replacement.
+8. **`C-003` (PID-Reuse Safety)**: Keyed process starttime identity from field 22 of `/proc/<pid>/stat` to guard against PID wraparound during prolonged monitoring sessions.
+9. **`C-008` (Unicode & ANSI Sanitization)**: `sanitize_text()` strips ANSI escape sequences, ASCII control characters, and Unicode directional overrides (Bidi controls).
+10. **`C-009` (Idempotent Terminal Restore)**: `TerminalManager` guarantees cleanup of raw mode, alternate screen buffers (`\x1b[?1049l`), and cursor visibility (`\x1b[?25h`) across normal exit, panic hooks, and termination signals.
 
 ---
 
-## 4. Automated Testing
+## 4. Automated Testing & Verification Suite
 
-The automated test suite (`tests/test_ram.py` and `tests/test_update_flow.py`) includes **52 tests** validating:
-- IEC byte formatting and boundary thresholds.
-- Percentage bounds and zero-denominator handling.
-- Full ANSI sequence and Unicode bidi character removal.
-- Linux `/proc/meminfo` parsing and field 22 starttime parsing.
-- macOS `vm_stat` regex parsing and unavailable commit state.
-- Narrow and wide terminal responsive rendering and centered margins.
-- RSA-2048 signature verification, digest validation, and AST semantic checks.
-- CLI argument bounds, help overlays, and JSON stdout schema validation.
+The test suite across the Cargo workspace consists of **62 automated tests**:
+* **`collector_linux` (30 unit tests)**: Validates `/proc/meminfo`, zram/disk swap detection, Cgroups v2/v1 boundary parsing, PID-reuse starttime tracking, RSS/PSS/USS aggregation, and process hierarchy grouping.
+* **`core_render` (23 unit tests)**: Validates Unicode cell-width calculation (CJK, ZWJ, combining characters), TrueColor RGB gradient interpolation, IEC byte boundary formatting, and frame-buffer row diffing.
+* **`ui` (5 unit tests)**: Validates 13 TrueColor theme palettes, mode cycling, and monochrome fallback formatting.
+* **`cli` (4 integration tests)**: Validates `--once` execution, CLI help documentation, sorting arguments (`--sort pss|uss|rss|name`), and JSON telemetry schema conformance.
 
-Run tests locally:
+---
+
+## 5. Verification Commands
+
+Run full workspace tests:
 ```bash
-python3 -m unittest discover tests
+cargo test --workspace
+```
+
+Run strict clippy linter:
+```bash
+cargo clippy --workspace --all-targets -- -D warnings
 ```

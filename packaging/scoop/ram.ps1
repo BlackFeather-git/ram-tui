@@ -1,1 +1,0 @@
-& python "$PSScriptRoot\..\..\ram" $args

@@ -1,0 +1,10 @@
+[package]
+name = "core_render"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Frame buffer, row diffing, and ANSI rendering primitives for ram-tui"
+
+[dependencies]
+unicode-width = "0.2"
+regex = "1"

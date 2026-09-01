@@ -1,12 +1,3 @@
-__pycache__/
-*.py[cod]
-*$py.class
-.venv/
-env/
-.DS_Store
-*.swp
-*.tmp
-*.pem
-*.key
-*.id_rsa
-sync.sh
+/target/
+**/*.rs.bk
+.directory

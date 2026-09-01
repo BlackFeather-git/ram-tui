@@ -1,0 +1,23 @@
+[workspace]
+members = [
+    "core_render",
+    "collector_linux",
+    "ui",
+    "cli",
+]
+resolver = "2"
+
+[workspace.package]
+version = "1.0.0-rc.1"
+edition = "2021"
+license = "MIT"
+authors = ["Raven (BlackFeather) <blackfeatheractual@proton.me>"]
+repository = "https://github.com/BlackFeather-git/ram-tui"
+description = "Fast, lightweight real-time terminal memory monitor"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true

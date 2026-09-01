@@ -1,0 +1,11 @@
+[package]
+name = "ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Theme engine, layout modes, and TUI rendering for ram-tui"
+
+[dependencies]
+core_render = { path = "../core_render" }
+collector_linux = { path = "../collector_linux" }
+libc = "0.2"
