@@ -228,8 +228,8 @@ pub fn collect_processes_sorted(
 
     procs.sort_by(|a, b| {
         match sort_metric {
-            SortMetric::Rss | SortMetric::Pss | SortMetric::Uss => b.rss.cmp(&a.rss),
             SortMetric::Name => a.name.cmp(&b.name),
+            _ => b.rss.cmp(&a.rss),
         }
         .then_with(|| a.name.cmp(&b.name))
         .then_with(|| a.pid.unwrap_or(0).cmp(&b.pid.unwrap_or(0)))

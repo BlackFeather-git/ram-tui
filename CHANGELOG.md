@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.0-rc.5] - 2026-09-01
+
+### macOS Transparent Sort Metrics & Cross-Platform Verification
+`RAM-TUI v1.0.0-rc.5` resolves all platform-specific telemetry semantics:
+
+* **Transparent macOS Metric Constraints**: Since macOS Mach VM exposes resident memory (RSS) but lacks kernel-level PSS/USS breakdown interfaces, macOS process sorting is strictly defined as `RSS` and `Name`. Interactive hotkey `o` cleanly cycles `RSS -> Name -> RSS` on macOS, eliminating misleading synthetic USS mappings.
+* **Windows Private Working Set Telemetry**: Windows process sorting accurately separates Resident Set Size (RSS) and Private Committed Memory / Working Set (USS via `PROCESS_MEMORY_COUNTERS_EX.PrivateUsage`).
+* **Linux Full Precision Telemetry**: Linux retains kernel-level Proportional Set Size (PSS via `smaps_rollup`), Unique Set Size (USS), Resident Set Size (RSS), and Cgroups v2/v1 container boundaries.
+
+---
+
 ## [1.0.0-rc.4] - 2026-09-01
 
 ### Strict Architecture-Specific Pidfd, Platform-Aware Sort Metrics & Synchronization

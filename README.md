@@ -8,12 +8,12 @@
 
 <br />
 
-<img src="assets/hero.png?v=1.0.0-rc.4" alt="RAM-TUI live terminal interface" width="860" />
+<img src="assets/hero.png?v=1.0.0-rc.5" alt="RAM-TUI live terminal interface" width="860" />
 
 <br />
 
 [![CI](https://github.com/BlackFeather-git/ram-tui/actions/workflows/ci.yml/badge.svg?branch=test)](https://github.com/BlackFeather-git/ram-tui/actions)
-[![Latest Release](https://img.shields.io/badge/release-v1.0.0--rc.4-brightgreen.svg)](https://github.com/BlackFeather-git/ram-tui/releases)
+[![Latest Release](https://img.shields.io/badge/release-v1.0.0--rc.5-brightgreen.svg)](https://github.com/BlackFeather-git/ram-tui/releases)
 [![Rust 1.70+](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-brightgreen.svg)]()
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
@@ -207,7 +207,7 @@ Control `RAM-TUI` live during interactive monitoring:
 | `m` / `M` | Cycle display modes live (**Hero** -> **Compact** -> **Mini**). |
 | `1` | Group processes by executable name (default). |
 | `2` | Display individual process PIDs. |
-| `o` / `O` | Cycle sort metric live (**RSS** -> **PSS** [Linux] -> **USS** -> **Alphabetical**). |
+| `o` / `O` | Cycle sort metric live (Linux: **RSS** -> **PSS** -> **USS** -> **Name**; Windows: **RSS** -> **USS** -> **Name**; macOS: **RSS** -> **Name**). |
 | `g` / `G` | Toggle 60-second historical trend sparkline. |
 | `↑` / `↓` (`k`/`j`) | Navigate cursor across process entries. |
 | `Enter` / `e` / `Tab`| Expand / Collapse process tree group (showing child PIDs `├─`, `└─`). |

@@ -17,9 +17,9 @@ use ui::themes::{get_palette, next_cycling_mode, next_theme, THEME_NAMES};
 
 pub mod diagnostics;
 
-const VERSION: &str = "1.0.0-rc.4";
+const VERSION: &str = "1.0.0-rc.5";
 
-/// ram-tui v1.0.0-rc.4 — Fast, aesthetic, native terminal memory monitor
+/// ram-tui v1.0.0-rc.5 — Fast, aesthetic, native terminal memory monitor
 #[derive(Parser, Debug)]
 #[command(name = "ram", version = VERSION, about)]
 struct Args {
@@ -63,7 +63,7 @@ struct Args {
     #[arg(long, default_value = "block", value_parser = ["block", "braille"])]
     symbol: String,
 
-    /// Process sorting metric: 'rss', 'pss' (Linux), 'uss', or 'name' (default: rss)
+    /// Process sorting metric: 'rss', 'pss' (Linux), 'uss' (Linux/Windows), or 'name' (default: rss)
     #[arg(long, default_value = "rss", value_parser = ["rss", "pss", "uss", "name"])]
     sort: String,
 
@@ -257,15 +257,34 @@ pub fn run() {
             {
                 SortMetric::Pss
             }
-            #[cfg(not(target_os = "linux"))]
+            #[cfg(target_os = "windows")]
             {
                 diagnostics::log_debug(
-                    "PSS is Linux smaps specific; falling back to USS on this platform",
+                    "PSS is Linux smaps specific; falling back to USS on Windows",
                 );
                 SortMetric::Uss
             }
+            #[cfg(target_os = "macos")]
+            {
+                diagnostics::log_debug("PSS is Linux smaps specific; falling back to RSS on macOS");
+                SortMetric::Rss
+            }
+            #[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
+            {
+                SortMetric::Rss
+            }
         }
-        "uss" => SortMetric::Uss,
+        "uss" => {
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            {
+                SortMetric::Uss
+            }
+            #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+            {
+                diagnostics::log_debug("USS is unavailable on macOS Mach VM; falling back to RSS");
+                SortMetric::Rss
+            }
+        }
         "name" => SortMetric::Name,
         _ => SortMetric::Rss,
     };
@@ -691,11 +710,29 @@ pub fn run() {
                             SortMetric::Name => SortMetric::Rss,
                         };
                     }
-                    #[cfg(not(target_os = "linux"))]
+                    #[cfg(target_os = "windows")]
                     {
                         sort_metric = match sort_metric {
                             SortMetric::Rss => SortMetric::Uss,
                             SortMetric::Uss => SortMetric::Name,
+                            _ => SortMetric::Rss,
+                        };
+                    }
+                    #[cfg(target_os = "macos")]
+                    {
+                        sort_metric = match sort_metric {
+                            SortMetric::Rss => SortMetric::Name,
+                            _ => SortMetric::Rss,
+                        };
+                    }
+                    #[cfg(not(any(
+                        target_os = "linux",
+                        target_os = "windows",
+                        target_os = "macos"
+                    )))]
+                    {
+                        sort_metric = match sort_metric {
+                            SortMetric::Rss => SortMetric::Name,
                             _ => SortMetric::Rss,
                         };
                     }
