@@ -8,7 +8,7 @@
 
 <br />
 
-<img src="assets/hero.png" alt="RAM-TUI live terminal interface" width="860" />
+<img src="assets/hero.png?v=0.7.0" alt="RAM-TUI live terminal interface" width="860" />
 
 <br />
 
