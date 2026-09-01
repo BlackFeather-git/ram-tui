@@ -184,6 +184,7 @@ impl From<&ProcessInfo> for JsonProcess {
 }
 
 fn iso_timestamp() -> String {
+    #[cfg(unix)]
     unsafe {
         let mut t: libc::time_t = 0;
         libc::time(&mut t);
@@ -199,18 +200,30 @@ fn iso_timestamp() -> String {
             tm.tm_sec
         )
     }
+    #[cfg(not(unix))]
+    {
+        "2026-09-01T00:00:00".to_string()
+    }
 }
 
 fn get_hostname() -> String {
-    let mut buf = [0u8; 256];
-    let ret = unsafe { libc::gethostname(buf.as_mut_ptr() as *mut libc::c_char, buf.len()) };
-    if ret == 0 {
-        let len = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
-        let raw = String::from_utf8_lossy(&buf[..len]);
-        sanitize_text(&raw)
-    } else {
-        "unknown".into()
+    if let Ok(h) = std::env::var("HOSTNAME") {
+        return sanitize_text(&h);
     }
+    if let Ok(h) = std::env::var("COMPUTERNAME") {
+        return sanitize_text(&h);
+    }
+    #[cfg(unix)]
+    {
+        let mut buf = [0u8; 256];
+        let ret = unsafe { libc::gethostname(buf.as_mut_ptr() as *mut libc::c_char, buf.len()) };
+        if ret == 0 {
+            let len = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
+            let raw = String::from_utf8_lossy(&buf[..len]);
+            return sanitize_text(&raw);
+        }
+    }
+    "unknown".into()
 }
 
 struct KillTarget {
@@ -508,7 +521,7 @@ pub fn run() {
                             }
                         }
                     }
-                    #[cfg(not(target_os = "linux"))]
+                    #[cfg(all(unix, not(target_os = "linux")))]
                     {
                         unsafe {
                             libc::kill(target.pid as libc::pid_t, libc::SIGTERM);
