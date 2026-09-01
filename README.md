@@ -88,8 +88,11 @@ ram --json --once
 
 ## Installation
 
-> [!NOTE]
-> **Transition Notice (v1.0.0)**: RAM-TUI has officially transitioned from Python to a native Rust binary. If you are upgrading from an older Python version (v0.7.0), run the installer below to replace the Python script with the native binary.
+> [!IMPORTANT]
+> **Project Status & Maintenance Baseline (v1.0.0)**  
+> A sincere thank you to everyone who supported, tested, and used RAM-TUI throughout its journey! With the release of **v1.0.0**, active feature development is officially frozen, and a stable maintenance-only baseline is established. The project is feature-complete and will continue to receive dedicated bug, security, and compatibility maintenance.
+>
+> **Transition Notice**: RAM-TUI has officially transitioned from Python to a native Rust binary. If you are upgrading from an older Python version (v0.7.0), run the installer below to replace the Python script with the native binary.
 
 ### Method 1: One-Line Installer (Linux & macOS)
 
