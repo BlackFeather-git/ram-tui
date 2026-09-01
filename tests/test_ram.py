@@ -253,9 +253,33 @@ class TerminalAndCliTests(unittest.TestCase):
             lines = rendered.splitlines()
             # On 40-row terminal with ~12 TUI lines, top padding must be present
             self.assertEqual(lines[0], "")
-            self.assertIn("RAM-TUI", rendered)
+            self.assertIn("█▀█ ▄▀█ █▄▀▄█", rendered)
             # Must not exceed terminal rows
             self.assertLessEqual(len(lines), 40)
+
+    def test_theme_gradients_coverage(self):
+        for theme in ram.THEME_NAMES:
+            if theme == "monochrome":
+                continue
+            stops = ram.THEME_GRADIENTS.get(theme)
+            self.assertIsNotNone(stops)
+            self.assertGreaterEqual(len(stops), 2)
+            for pos, rgb in stops:
+                self.assertGreaterEqual(pos, 0.0)
+                self.assertLessEqual(pos, 1.0)
+                self.assertEqual(len(rgb), 3)
+                for c in rgb:
+                    self.assertGreaterEqual(c, 0)
+                    self.assertLessEqual(c, 255)
+
+    def test_gradient_interpolation_bounds(self):
+        stops = [(0.0, (0, 0, 0)), (1.0, (100, 200, 50))]
+        c_0 = ram.interpolate_color(stops, -0.5)
+        self.assertEqual(c_0, (0, 0, 0))
+        c_mid = ram.interpolate_color(stops, 0.5)
+        self.assertEqual(c_mid, (50, 100, 25))
+        c_1 = ram.interpolate_color(stops, 1.5)
+        self.assertEqual(c_1, (100, 200, 50))
 
     def test_viewport_height_budgeting(self):
         mem = {

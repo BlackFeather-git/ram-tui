@@ -1,9 +1,9 @@
 {
-  "version": "0.6.1",
+  "version": "0.7.0",
   "description": "Lightweight, aesthetic zero-dependency real-time terminal memory monitor",
   "homepage": "https://github.com/BlackFeather-git/ram-tui",
   "license": "MIT",
-  "url": "https://github.com/BlackFeather-git/ram-tui/archive/v0.6.1.zip",
+  "url": "https://github.com/BlackFeather-git/ram-tui/archive/v0.7.0.zip",
   "hash": "REPLACE_WITH_RELEASE_SHA256",
   "bin": [
     ["packaging/scoop/ram.cmd", "ram"],

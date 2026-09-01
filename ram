@@ -31,7 +31,7 @@ import unicodedata
 import urllib.request
 from datetime import datetime
 
-__version__ = "0.6.1"
+__version__ = "0.7.0"
 SYSTEM_OS = platform.system()
 
 PAGE_SIZE = 4096
@@ -412,9 +412,70 @@ THEME_PALETTES = {
     },
 }
 
+THEME_GRADIENTS = {
+    "default": [(0.0, (75, 210, 110)), (0.50, (100, 200, 240)), (0.75, (240, 200, 80)), (1.0, (240, 80, 80))],
+    "dracula": [(0.0, (139, 233, 253)), (0.35, (189, 147, 249)), (0.70, (255, 121, 198)), (1.0, (255, 85, 85))],
+    "catppuccin": [(0.0, (116, 199, 236)), (0.35, (148, 226, 213)), (0.70, (203, 166, 247)), (1.0, (243, 139, 168))],
+    "nord": [(0.0, (136, 192, 208)), (0.40, (129, 161, 193)), (0.75, (235, 203, 139)), (1.0, (191, 97, 106))],
+    "tokyo-night": [(0.0, (125, 207, 255)), (0.40, (122, 162, 247)), (0.75, (187, 154, 247)), (1.0, (247, 118, 142))],
+    "gruvbox": [(0.0, (142, 192, 124)), (0.40, (184, 187, 38)), (0.75, (250, 189, 47)), (1.0, (251, 73, 52))],
+    "cyberpunk": [(0.0, (0, 229, 255)), (0.40, (244, 255, 0)), (0.75, (255, 42, 157)), (1.0, (255, 0, 60))],
+    "rose-pine": [(0.0, (156, 207, 216)), (0.35, (196, 167, 231)), (0.70, (246, 193, 119)), (1.0, (235, 111, 146))],
+    "everforest": [(0.0, (167, 192, 128)), (0.40, (131, 192, 146)), (0.75, (219, 188, 127)), (1.0, (230, 126, 128))],
+    "kanagawa": [(0.0, (126, 156, 216)), (0.40, (152, 187, 108)), (0.75, (210, 126, 153)), (1.0, (195, 64, 67))],
+    "monokai": [(0.0, (102, 217, 239)), (0.35, (166, 226, 46)), (0.70, (230, 219, 116)), (1.0, (249, 38, 114))],
+    "solarized": [(0.0, (42, 161, 152)), (0.35, (38, 139, 210)), (0.70, (181, 137, 0)), (1.0, (220, 50, 47))],
+    "monochrome": [],
+}
+
 BLOCK_FRACTIONS = ["", "▏", "▎", "▍", "▌", "▋", "▊", "▉"]
 BLOCK_FULL = "█"
 BLOCK_TRACK = "░"
+
+
+def interpolate_color(stops, pos):
+    """Interpolates RGB tuple from gradient color stops across position [0.0, 1.0]."""
+    pos = max(0.0, min(1.0, float(pos)))
+    if not stops:
+        return None
+    if len(stops) == 1 or pos <= stops[0][0]:
+        return stops[0][1]
+    if pos >= stops[-1][0]:
+        return stops[-1][1]
+    for i in range(len(stops) - 1):
+        p1, c1 = stops[i]
+        p2, c2 = stops[i + 1]
+        if p1 <= pos <= p2:
+            span = p2 - p1
+            if span <= 0:
+                return c1
+            t = (pos - p1) / span
+            r = int(round(c1[0] + (c2[0] - c1[0]) * t))
+            g = int(round(c1[1] + (c2[1] - c1[1]) * t))
+            b = int(round(c1[2] + (c2[2] - c1[2]) * t))
+            return (r, g, b)
+    return stops[-1][1]
+
+
+def rgb_to_ansi(rgb):
+    """Formats RGB tuple to 24-bit TrueColor ANSI foreground escape sequence."""
+    if rgb is None:
+        return ""
+    return f"\033[38;2;{rgb[0]};{rgb[1]};{rgb[2]}m"
+
+
+def colorize_ascii_banner(line, stops, max_w=26, enable_color=True):
+    """Colorizes a single banner string line across a smooth horizontal gradient."""
+    if not enable_color or not stops:
+        return line
+    res = []
+    for i, ch in enumerate(line):
+        if ch == " ":
+            res.append(" ")
+        else:
+            c = rgb_to_ansi(interpolate_color(stops, i / max(1, max_w)))
+            res.append(f"{c}{ch}")
+    return "".join(res) + "\033[0m"
 
 
 def should_use_color(is_interactive=True):
@@ -427,12 +488,13 @@ def should_use_color(is_interactive=True):
 
 
 def get_palette(theme_name="default", enable_color=True):
-    """Returns ANSI codes dictionary for the active theme."""
+    """Returns ANSI codes dictionary and gradient stops for the active theme."""
     if not enable_color or theme_name == "monochrome" or theme_name not in THEME_PALETTES:
         return {
             "RESET": "", "BOLD": "", "DIM": "",
             "HEADER": "", "ACCENT": "", "GOOD": "", "WARNING": "",
             "CRITICAL": "", "MUTED": "", "TRACK": "", "TEXT": "",
+            "STOPS": [],
         }
     
     t = THEME_PALETTES[theme_name]
@@ -448,6 +510,7 @@ def get_palette(theme_name="default", enable_color=True):
         "MUTED": t["muted"],
         "TRACK": t["track"],
         "TEXT": t["text"],
+        "STOPS": THEME_GRADIENTS.get(theme_name, []),
     }
 
 
@@ -1688,29 +1751,39 @@ class UpdateManager:
 # Minimalist, Breathable Modern UI Rendering Engine
 # ---------------------------------------------------------------------------
 
-def render_meter_track(ratio, width=32, pal=None, symbol="block", color=None):
-    """Renders progress bar with sub-character accuracy in Block or Braille style."""
+def render_meter_track(ratio, width=32, pal=None, symbol="block", color=None, stops=None):
+    """Renders progress bar with sub-character accuracy and smooth TrueColor gradients."""
     pal = pal or get_palette("monochrome", False)
     ratio = clamp(ratio, 0.0, 1.0)
     width = max(1, width)
-
-    if color is not None:
-        c = color
-    else:
-        if ratio < 0.60:
-            c = pal["GOOD"]
-        elif ratio < 0.85:
-            c = pal["WARNING"]
-        else:
-            c = pal["CRITICAL"]
+    gradient_stops = stops if stops is not None else pal.get("STOPS", [])
 
     if symbol == "braille":
         total_steps = int(round(ratio * width * 2))
         full_blocks = total_steps // 2
         rem_steps = total_steps % 2
         empty_blocks = max(0, width - full_blocks - (1 if rem_steps > 0 else 0))
-        frac_char = "⡇" if rem_steps == 1 else ""
-        filled_part = f"{c}{'⣿' * full_blocks}{frac_char}{pal['RESET']}"
+        
+        filled_parts = []
+        for i in range(full_blocks):
+            if color is not None:
+                c = color
+            elif gradient_stops:
+                c = rgb_to_ansi(interpolate_color(gradient_stops, (i + 0.5) / width))
+            else:
+                c = pal["GOOD"] if ratio < 0.60 else (pal["WARNING"] if ratio < 0.85 else pal["CRITICAL"])
+            filled_parts.append(f"{c}⣿")
+            
+        if rem_steps == 1:
+            if color is not None:
+                c = color
+            elif gradient_stops:
+                c = rgb_to_ansi(interpolate_color(gradient_stops, (full_blocks + 0.5) / width))
+            else:
+                c = pal["GOOD"] if ratio < 0.60 else (pal["WARNING"] if ratio < 0.85 else pal["CRITICAL"])
+            filled_parts.append(f"{c}⡇")
+            
+        filled_part = "".join(filled_parts) + pal["RESET"]
         empty_part = f"{pal['TRACK']}{BLOCK_TRACK * empty_blocks}{pal['RESET']}"
         return f"{filled_part}{empty_part}"
     else:
@@ -1718,7 +1791,27 @@ def render_meter_track(ratio, width=32, pal=None, symbol="block", color=None):
         full_blocks = total_eighths // 8
         rem_eighths = total_eighths % 8
         empty_blocks = max(0, width - full_blocks - (1 if rem_eighths > 0 else 0))
-        filled_part = f"{c}{BLOCK_FULL * full_blocks}{BLOCK_FRACTIONS[rem_eighths]}{pal['RESET']}"
+        
+        filled_parts = []
+        for i in range(full_blocks):
+            if color is not None:
+                c = color
+            elif gradient_stops:
+                c = rgb_to_ansi(interpolate_color(gradient_stops, (i + 0.5) / width))
+            else:
+                c = pal["GOOD"] if ratio < 0.60 else (pal["WARNING"] if ratio < 0.85 else pal["CRITICAL"])
+            filled_parts.append(f"{c}{BLOCK_FULL}")
+            
+        if rem_eighths > 0:
+            if color is not None:
+                c = color
+            elif gradient_stops:
+                c = rgb_to_ansi(interpolate_color(gradient_stops, (full_blocks + 0.5) / width))
+            else:
+                c = pal["GOOD"] if ratio < 0.60 else (pal["WARNING"] if ratio < 0.85 else pal["CRITICAL"])
+            filled_parts.append(f"{c}{BLOCK_FRACTIONS[rem_eighths]}")
+            
+        filled_part = "".join(filled_parts) + pal["RESET"]
         empty_part = f"{pal['TRACK']}{BLOCK_TRACK * empty_blocks}{pal['RESET']}"
         return f"{filled_part}{empty_part}"
 
@@ -1790,24 +1883,44 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
     clock = f"{m}{now_str}{r}"
     clock_w = visible_cell_width(clock)
 
-    if ui_cols >= 64:
-        header_left = (
-            f"{h}{bold}RAM-TUI{r}  {m}·{r}  {t}{truncate_plain_cells(hostname, 16)}{r}  {m}·{r}  "
-            f"{m}{SYSTEM_OS} {platform.machine()}{r}  {m}·{r}  {a}{theme}{r}{state_str}"
-        )
-    elif ui_cols >= 44:
-        header_left = f"{h}{bold}RAM-TUI{r}  {m}·{r}  {t}{truncate_plain_cells(hostname, 12)}{r}  {m}·{r}  {a}{theme}{r}{state_str}"
-    else:
-        header_left = f"{h}{bold}RAM-TUI{r}  {m}·{r}  {a}{theme}{r}{state_str}"
+    banner_w = 26
+    if ui_cols >= 64 and rows >= 14:
+        banner_1 = colorize_ascii_banner("█▀█ ▄▀█ █▄▀▄█ ▄▄ ▀█▀ █ █ █", pal.get("STOPS", []), 26, enable_color)
+        banner_2 = colorize_ascii_banner("█▀▄ █▀█ █ ▀ █    █  █▄█ █", pal.get("STOPS", []), 26, enable_color)
 
-    left_w = visible_cell_width(header_left)
-    if left_w + clock_w + 2 <= ui_cols:
-        gap = ui_cols - left_w - clock_w
-        lines.append(f"{header_left}{' ' * gap}{clock}")
-    elif left_w <= ui_cols:
-        lines.append(header_left)
+        clock_full = f"{m}{now_str}{r}{state_str}"
+        clock_w = visible_cell_width(clock_full)
+        if ui_cols >= 76:
+            meta_str = f"{t}{truncate_plain_cells(hostname, 16)}{r}  {m}·{r}  {m}{SYSTEM_OS} {platform.machine()}{r}  {m}·{r}  {a}{theme}{r}"
+        else:
+            meta_str = f"{t}{truncate_plain_cells(hostname, 12)}{r}  {m}·{r}  {a}{theme}{r}"
+        meta_w = visible_cell_width(meta_str)
+
+        if banner_w + clock_w + 2 <= ui_cols:
+            gap1 = ui_cols - banner_w - clock_w
+            lines.append(f"{banner_1}{' ' * gap1}{clock_full}")
+        else:
+            lines.append(banner_1)
+
+        if banner_w + meta_w + 2 <= ui_cols:
+            gap2 = ui_cols - banner_w - meta_w
+            lines.append(f"{banner_2}{' ' * gap2}{meta_str}")
+        else:
+            lines.append(banner_2)
     else:
-        lines.append(clamp_line_to_cols(header_left, ui_cols))
+        if ui_cols >= 44:
+            header_left = f"{h}{bold}RAM-TUI{r}  {m}·{r}  {t}{truncate_plain_cells(hostname, 12)}{r}  {m}·{r}  {a}{theme}{r}{state_str}"
+        else:
+            header_left = f"{h}{bold}RAM-TUI{r}  {m}·{r}  {a}{theme}{r}{state_str}"
+
+        left_w = visible_cell_width(header_left)
+        if left_w + clock_w + 2 <= ui_cols:
+            gap = ui_cols - left_w - clock_w
+            lines.append(f"{header_left}{' ' * gap}{clock}")
+        elif left_w <= ui_cols:
+            lines.append(header_left)
+        else:
+            lines.append(clamp_line_to_cols(header_left, ui_cols))
 
     lines.append(rule)
 
@@ -1876,9 +1989,9 @@ def render_snapshot(mem, procs, group_procs=True, paused=False, mode="hero", the
                 p_pct_str = f"{p_pct:>5.1f}%"
                 p_color = g if p_pct < 40 else (w if p_pct < 70 else crit)
                 p_ratio = p["rss"] / max(1, procs[0]["rss"])
-                p_meter = render_meter_track(p_ratio, width=p_bar_w, pal=pal, symbol=symbol, color=p_color)
+                p_meter = render_meter_track(p_ratio, width=p_bar_w, pal=pal, symbol=symbol, stops=pal.get("STOPS"))
 
-                p_line = f"{t}{name_padded}{r}   {g}{rss_str}{r}   {p_meter}   {m}{p_pct_str:>6}{r}"
+                p_line = f"{t}{name_padded}{r}   {t}{bold}{rss_str}{r}   {p_meter}   {m}{p_pct_str:>6}{r}"
                 lines.append(clamp_line_to_cols(p_line, ui_cols))
 
     # Footer & Help Overlay (C-003)

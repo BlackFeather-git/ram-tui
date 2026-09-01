@@ -2,8 +2,8 @@
 
 Date: 2026-09-01  
 Maintainer: Raven (BlackFeather) https://github.com/BlackFeather-git/ram-tui  
-Latest Verified State: `v0.6.1` (12-job CI matrix verified across Ubuntu, macOS, and Windows)  
-Historical Reference: Initial audit completed at `v0.4.3`, hardened through `v0.5.x` and `v0.6.0` to `v0.6.1`.
+Latest Verified State: `v0.7.0` (12-job CI matrix verified across Ubuntu, macOS, and Windows)  
+Historical Reference: Initial audit completed at `v0.4.3`, hardened through `v0.5.x` and `v0.6.x` to `v0.7.0`.
 
 ---
 
@@ -44,7 +44,7 @@ This document details the resolution of all confirmed peer audit findings (`C-00
 
 ## 4. Automated Testing
 
-The automated test suite (`tests/test_ram.py` and `tests/test_update_flow.py`) includes **50 tests** validating:
+The automated test suite (`tests/test_ram.py` and `tests/test_update_flow.py`) includes **52 tests** validating:
 - IEC byte formatting and boundary thresholds.
 - Percentage bounds and zero-denominator handling.
 - Full ANSI sequence and Unicode bidi character removal.
