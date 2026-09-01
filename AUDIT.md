@@ -42,11 +42,11 @@ This document details the architectural integrity, resolution of confirmed audit
 
 ## 4. Automated Testing & Verification Suite
 
-The test suite across the Cargo workspace consists of **62 automated tests**:
-* **`collector_linux` (30 unit tests)**: Validates `/proc/meminfo`, zram/disk swap detection, Cgroups v2/v1 boundary parsing, PID-reuse starttime tracking, RSS/PSS/USS aggregation, and process hierarchy grouping.
-* **`core_render` (23 unit tests)**: Validates Unicode cell-width calculation (CJK, ZWJ, combining characters), TrueColor RGB gradient interpolation, IEC byte boundary formatting, and frame-buffer row diffing.
+The test suite across the Cargo workspace consists of **66 automated tests**:
+* **`collector` (31 unit tests)**: Validates `/proc/meminfo`, zram/disk swap detection, Cgroups v2/v1 boundary parsing, PID-reuse starttime tracking, RSS/PSS/USS aggregation, and process hierarchy grouping.
+* **`core_render` (24 unit tests)**: Validates Unicode cell-width calculation (CJK, ZWJ, combining characters), TrueColor RGB gradient interpolation, IEC byte boundary formatting, frame-buffer row diffing, and civil timestamp conversion.
 * **`ui` (5 unit tests)**: Validates 13 TrueColor theme palettes, mode cycling, and monochrome fallback formatting.
-* **`cli` (4 integration tests)**: Validates `--once` execution, CLI help documentation, sorting arguments (`--sort pss|uss|rss|name`), and JSON telemetry schema conformance.
+* **`cli` (6 integration tests)**: Validates `--once` execution, CLI help documentation, sorting arguments (`--sort pss|uss|rss|name`), JSON telemetry schema conformance, `--spark` rolling trend flag, and zero-emoji regression invariant.
 
 ---
 

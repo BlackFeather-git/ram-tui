@@ -17,7 +17,7 @@
 [![Rust 1.70+](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-brightgreen.svg)]()
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-65%20passed-success)](cli/tests/)
+[![Tests](https://img.shields.io/badge/tests-66%20passed-success)](cli/tests/)
 
 [Why RAM-TUI?](#why-ram-tui) · [Benchmarks](#performance--benchmarks) · [Quick Start](#quick-start) · [Installation](#installation) · [Color Themes](#color-themes) · [Display Modes](#display-modes) · [Kernel Telemetry](#deep-kernel-telemetry) · [Hotkeys](#interactive-hotkeys) · [Status Bars](#status-bar-integration) · [JSON](#json-telemetry) · [Architecture](#architecture) · [Security](#security--updates)
 
@@ -298,34 +298,34 @@ ram --json --once | jq '.memory'
 `RAM-TUI` is structured as a modular Cargo workspace:
 
 ```text
-                               ram / ram-tui (CLI Entry)
-                                          │
-                  ┌───────────────────────┴───────────────────────┐
-                  ▼                                               ▼
-         collector_linux                                     core_render
-     (Direct Kernel Readers)                            (High-Speed Presenter)
-                  │                                               │
-   ┌──────────────┼──────────────┐                 ┌──────────────┼──────────────┐
-   │              │              │                 │              │              │
- Linux          macOS         Windows         FrameBuffer      Sparkline      CellWidth
- /proc + smaps  Mach Kernel   PSAPI FFI       (Row Diffing)    (Auto-Ranging) (Unicode/CJK)
-   │              │              │                 │              │              │
-   └──────────────┼──────────────┘                 └──────────────┼──────────────┘
-                  ▼                                               ▼
-          System Telemetry ──────────────────────────────► UI Presentation
-                                                               (13 Themes)
+                                ram / ram-tui (CLI Entry)
+                                           │
+                   ┌───────────────────────┴───────────────────────┐
+                   ▼                                               ▼
+               collector                                      core_render
+        (Direct Kernel Telemetry)                        (High-Speed Presenter)
+                   │                                               │
+    ┌──────────────┼──────────────┐                 ┌──────────────┼──────────────┐
+    │              │              │                 │              │              │
+  Linux          macOS         Windows         FrameBuffer      Sparkline      CellWidth
+  /proc + smaps  Mach Kernel   PSAPI FFI       (Row Diffing)    (Auto-Ranging) (Unicode/CJK)
+    │              │              │                 │              │              │
+    └──────────────┼──────────────┘                 └──────────────┼──────────────┘
+                   ▼                                               ▼
+           System Telemetry ──────────────────────────────► UI Presentation
+                                                                (13 Themes)
 ```
 
 ---
 
-## Security & Updates
+## Security & Invariants
 
 `RAM-TUI` is engineered with strict defense-in-depth principles:
 
 * **Zero Network Telemetry**: `RAM-TUI` never sends telemetry, metrics, or host metadata across the network.
-* **Privileged Directory & TOCTOU Guard**: Verifies physical file and directory authenticity prior to atomic replacement.
+* **Cache-Only Hotkeys & Targeted Verification**: Non-destructive UI hotkeys operate strictly in memory on cached telemetry; process termination (`x`/`K`) performs targeted identity verification prior to signaling.
 * **Sanitization Invariant**: Strips ANSI escapes, ASCII controls, and Unicode bidirectional overrides from process comms and hostnames.
-* **Process Termination Gate**: Process killing (`x`/`K`) requires explicit keyboard confirmation (`[y/N]`).
+* **Process Termination Gate**: Process killing requires explicit keyboard confirmation (`[y/N]`).
 
 For full details, see [SECURITY.md](SECURITY.md).
 
@@ -359,7 +359,7 @@ Options:
 
 ## Automated Verification
 
-Run the full automated test suite (64 tests):
+Run the full automated test suite (66 tests):
 
 ```bash
 cargo test --workspace

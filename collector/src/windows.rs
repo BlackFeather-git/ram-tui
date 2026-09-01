@@ -138,13 +138,24 @@ pub fn collect_processes_sorted(
 ) -> Vec<ProcessInfo> {
     let mut pids = vec![0u32; 2048];
     let mut cb_needed: u32 = 0;
-    let ret = unsafe {
+    let mut ret = unsafe {
         K32EnumProcesses(
             pids.as_mut_ptr(),
             (pids.len() * std::mem::size_of::<u32>()) as u32,
             &mut cb_needed,
         )
     };
+
+    while ret != 0 && (cb_needed as usize) >= pids.len() * std::mem::size_of::<u32>() {
+        pids.resize(pids.len() * 2, 0);
+        ret = unsafe {
+            K32EnumProcesses(
+                pids.as_mut_ptr(),
+                (pids.len() * std::mem::size_of::<u32>()) as u32,
+                &mut cb_needed,
+            )
+        };
+    }
 
     if ret == 0 || cb_needed == 0 {
         return Vec::new();

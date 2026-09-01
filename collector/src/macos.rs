@@ -157,7 +157,7 @@ pub fn collect_processes_sorted(
     sort_metric: SortMetric,
 ) -> Vec<ProcessInfo> {
     let mut pids = vec![0i32; 2048];
-    let num_bytes = unsafe {
+    let mut num_bytes = unsafe {
         proc_listpids(
             PROC_ALL_PIDS,
             0,
@@ -165,6 +165,18 @@ pub fn collect_processes_sorted(
             (pids.len() * std::mem::size_of::<i32>()) as i32,
         )
     };
+
+    while num_bytes > 0 && (num_bytes as usize) >= pids.len() * std::mem::size_of::<i32>() {
+        pids.resize(pids.len() * 2, 0);
+        num_bytes = unsafe {
+            proc_listpids(
+                PROC_ALL_PIDS,
+                0,
+                pids.as_mut_ptr() as *mut libc::c_void,
+                (pids.len() * std::mem::size_of::<i32>()) as i32,
+            )
+        };
+    }
 
     if num_bytes <= 0 {
         return Vec::new();

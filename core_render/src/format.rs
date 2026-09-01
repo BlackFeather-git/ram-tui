@@ -1,4 +1,4 @@
-//! Formatting utilities — byte formatting, percentage, text sanitisation.
+//! Formatting utilities — byte formatting, percentage, text sanitisation, cross-platform timestamps.
 
 /// Format a byte count in compact IEC units (B, KB, MB, GB, TB).
 pub fn format_bytes(value: u64, precision: usize) -> String {
@@ -69,6 +69,70 @@ pub fn sanitize_text(value: &str) -> String {
         .collect()
 }
 
+/// Return human-readable operating system name.
+pub fn os_display_name() -> &'static str {
+    match std::env::consts::OS {
+        "linux" => "Linux",
+        "macos" => "macOS",
+        "windows" => "Windows",
+        "freebsd" => "FreeBSD",
+        "openbsd" => "OpenBSD",
+        "netbsd" => "NetBSD",
+        "dragonfly" => "DragonFly",
+        "solaris" => "Solaris",
+        "android" => "Android",
+        "ios" => "iOS",
+        other => other,
+    }
+}
+
+/// System civil date-time (Year, Month, Day, Hour, Min, Sec) derived in pure Rust from SystemTime.
+pub fn system_now_civil() -> (u32, u32, u32, u32, u32, u32) {
+    let now = std::time::SystemTime::now();
+    let secs = now
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let mut days = (secs / 86400) as i64;
+    let day_secs = (secs % 86400) as u32;
+
+    let hour = day_secs / 3600;
+    let min = (day_secs % 3600) / 60;
+    let sec = day_secs % 60;
+
+    days += 719468;
+    let era = if days >= 0 { days } else { days - 146096 } / 146097;
+    let doe = (days - era * 146097) as u32;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = (yoe as i64) + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = if m <= 2 { y + 1 } else { y } as u32;
+
+    (year, m, d, hour, min, sec)
+}
+
+/// Return the current time as formatted ISO-8601 string (e.g. "2026-09-02T00:25:30").
+pub fn iso_timestamp() -> String {
+    let (y, m, d, hh, mm, ss) = system_now_civil();
+    format!("{y:04}-{m:02}-{d:02}T{hh:02}:{mm:02}:{ss:02}")
+}
+
+/// Return the current time formatted as "YYYY-MM-DD HH:MM:SS" for logging.
+pub fn log_timestamp() -> String {
+    let (y, m, d, hh, mm, ss) = system_now_civil();
+    format!("{y:04}-{m:02}-{d:02} {hh:02}:{mm:02}:{ss:02}")
+}
+
+/// Return current time as "HH:MM:SS".
+pub fn local_now_hms() -> String {
+    let (_, _, _, hh, mm, ss) = system_now_civil();
+    format!("{hh:02}:{mm:02}:{ss:02}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -102,5 +166,19 @@ mod tests {
         assert!(!clean.contains('\u{feff}'));
         assert!(!clean.contains('\u{200b}'));
         assert_eq!(clean, "hello~world~ok~override~lro~bom~zwsp");
+    }
+
+    #[test]
+    fn test_timestamps_and_os() {
+        let ts = iso_timestamp();
+        assert!(ts.contains('T'));
+        assert_eq!(ts.len(), 19);
+
+        let hms = local_now_hms();
+        assert_eq!(hms.len(), 8);
+        assert_eq!(hms.chars().filter(|&c| c == ':').count(), 2);
+
+        let os = os_display_name();
+        assert!(!os.is_empty());
     }
 }

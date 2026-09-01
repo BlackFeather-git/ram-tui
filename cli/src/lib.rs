@@ -184,26 +184,7 @@ impl From<&ProcessInfo> for JsonProcess {
 }
 
 fn iso_timestamp() -> String {
-    #[cfg(unix)]
-    unsafe {
-        let mut t: libc::time_t = 0;
-        libc::time(&mut t);
-        let mut tm: libc::tm = std::mem::zeroed();
-        libc::localtime_r(&t, &mut tm);
-        format!(
-            "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}",
-            tm.tm_year + 1900,
-            tm.tm_mon + 1,
-            tm.tm_mday,
-            tm.tm_hour,
-            tm.tm_min,
-            tm.tm_sec
-        )
-    }
-    #[cfg(not(unix))]
-    {
-        "2026-09-01T00:00:00".to_string()
-    }
+    core_render::format::iso_timestamp()
 }
 
 fn get_hostname() -> String {
@@ -527,7 +508,35 @@ pub fn run() {
                             libc::kill(target.pid as libc::pid_t, libc::SIGTERM);
                         }
                     }
-                    #[cfg(not(unix))]
+                    #[cfg(target_os = "windows")]
+                    {
+                        #[allow(non_snake_case)]
+                        extern "system" {
+                            fn OpenProcess(
+                                dwDesiredAccess: u32,
+                                bInheritHandle: i32,
+                                dwProcessId: u32,
+                            ) -> *mut std::ffi::c_void;
+                            fn TerminateProcess(
+                                hProcess: *mut std::ffi::c_void,
+                                uExitCode: u32,
+                            ) -> i32;
+                            fn CloseHandle(hObject: *mut std::ffi::c_void) -> i32;
+                        }
+                        const PROCESS_TERMINATE: u32 = 0x0001;
+                        let h = unsafe { OpenProcess(PROCESS_TERMINATE, 0, target.pid) };
+                        if !h.is_null() {
+                            let ret = unsafe { TerminateProcess(h, 1) };
+                            unsafe { CloseHandle(h) };
+                            if ret != 0 {
+                                diagnostics::log_debug(&format!(
+                                    "Successfully terminated process {} (PID: {}) via TerminateProcess",
+                                    target.name, target.pid
+                                ));
+                            }
+                        }
+                    }
+                    #[cfg(not(any(unix, target_os = "windows")))]
                     {
                         diagnostics::log_debug(&format!(
                             "Process termination is unsupported on this platform: {} (PID: {})",

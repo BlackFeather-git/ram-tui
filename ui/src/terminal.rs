@@ -1,6 +1,6 @@
 //! Terminal raw mode, alternate screen, signal management, and non-blocking key input.
 
-#![allow(unused_imports, dead_code)]
+#![allow(unused_imports, dead_code, non_snake_case)]
 
 use std::io::{self, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -32,6 +32,68 @@ static SAVED_TERMIOS: Mutex<Option<libc::termios>> = Mutex::new(None);
 #[cfg(unix)]
 extern "C" fn signal_handler(_sig: libc::c_int) {
     SIGNAL_RECEIVED.store(true, Ordering::SeqCst);
+}
+
+#[cfg(windows)]
+#[repr(C)]
+struct KEY_EVENT_RECORD {
+    bKeyDown: i32,
+    wRepeatCount: u16,
+    wVirtualKeyCode: u16,
+    wVirtualScanCode: u16,
+    uChar: u16,
+    dwControlKeyState: u32,
+}
+
+#[cfg(windows)]
+#[repr(C)]
+struct INPUT_RECORD {
+    EventType: u16,
+    KeyEvent: KEY_EVENT_RECORD,
+}
+
+#[cfg(windows)]
+#[repr(C)]
+struct COORD {
+    X: i16,
+    Y: i16,
+}
+
+#[cfg(windows)]
+#[repr(C)]
+struct SMALL_RECT {
+    Left: i16,
+    Top: i16,
+    Right: i16,
+    Bottom: i16,
+}
+
+#[cfg(windows)]
+#[repr(C)]
+struct CONSOLE_SCREEN_BUFFER_INFO {
+    dwSize: COORD,
+    dwCursorPosition: COORD,
+    wAttributes: u16,
+    srWindow: SMALL_RECT,
+    dwMaximumWindowSize: COORD,
+}
+
+#[cfg(windows)]
+extern "system" {
+    fn GetStdHandle(nStdHandle: i32) -> *mut std::ffi::c_void;
+    fn WaitForSingleObject(hHandle: *mut std::ffi::c_void, dwMilliseconds: u32) -> u32;
+    fn ReadConsoleInputW(
+        hConsoleInput: *mut std::ffi::c_void,
+        lpBuffer: *mut INPUT_RECORD,
+        nLength: u32,
+        lpNumberOfEventsRead: *mut u32,
+    ) -> i32;
+    fn GetConsoleScreenBufferInfo(
+        hConsoleOutput: *mut std::ffi::c_void,
+        lpConsoleScreenBufferInfo: *mut CONSOLE_SCREEN_BUFFER_INFO,
+    ) -> i32;
+    fn GetConsoleMode(hConsoleHandle: *mut std::ffi::c_void, lpMode: *mut u32) -> i32;
+    fn SetConsoleMode(hConsoleHandle: *mut std::ffi::c_void, dwMode: u32) -> i32;
 }
 
 /// Global idempotent terminal restoration function.
@@ -164,7 +226,20 @@ impl TerminalManager {
             }
         }
 
-        #[cfg(not(unix))]
+        #[cfg(windows)]
+        {
+            const ENABLE_VIRTUAL_TERMINAL_PROCESSING: u32 = 0x0004;
+            let h_out = unsafe { GetStdHandle(-11) }; // STD_OUTPUT_HANDLE = -11
+            if !h_out.is_null() {
+                let mut mode: u32 = 0;
+                if unsafe { GetConsoleMode(h_out, &mut mode) } != 0 {
+                    unsafe { SetConsoleMode(h_out, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING) };
+                }
+            }
+            RAW_ACTIVE.store(true, Ordering::SeqCst);
+        }
+
+        #[cfg(not(any(unix, windows)))]
         {
             RAW_ACTIVE.store(true, Ordering::SeqCst);
         }
@@ -226,7 +301,60 @@ impl TerminalManager {
             }
         }
 
-        #[cfg(not(unix))]
+        #[cfg(windows)]
+        {
+            let handle = unsafe { GetStdHandle(-10) }; // STD_INPUT_HANDLE = -10
+            if !handle.is_null() {
+                let wait_ret = unsafe { WaitForSingleObject(handle, timeout_ms as u32) };
+                if is_termination_requested() {
+                    return vec![Key::Char('\x03')];
+                }
+                if wait_ret == 0 {
+                    let mut records: [INPUT_RECORD; 16] = unsafe { std::mem::zeroed() };
+                    let mut read: u32 = 0;
+                    let ok = unsafe {
+                        ReadConsoleInputW(
+                            handle,
+                            records.as_mut_ptr(),
+                            records.len() as u32,
+                            &mut read,
+                        )
+                    };
+                    if ok != 0 && read > 0 {
+                        let mut keys = Vec::new();
+                        for rec in &records[..read as usize] {
+                            if rec.EventType == 1 && rec.KeyEvent.bKeyDown != 0 {
+                                match rec.KeyEvent.wVirtualKeyCode {
+                                    0x26 => keys.push(Key::Up),
+                                    0x28 => keys.push(Key::Down),
+                                    0x25 => keys.push(Key::Left),
+                                    0x27 => keys.push(Key::Right),
+                                    0x0D => keys.push(Key::Enter),
+                                    0x08 => keys.push(Key::Backspace),
+                                    0x1B => keys.push(Key::Esc),
+                                    0x09 => keys.push(Key::Tab),
+                                    _ => {
+                                        if rec.KeyEvent.uChar != 0 {
+                                            if let Some(ch) =
+                                                char::from_u32(rec.KeyEvent.uChar as u32)
+                                            {
+                                                keys.push(Key::Char(ch));
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if is_termination_requested() {
+                            return vec![Key::Char('\x03')];
+                        }
+                        return keys;
+                    }
+                }
+            }
+        }
+
+        #[cfg(not(any(unix, windows)))]
         {
             if timeout_ms > 0 {
                 std::thread::sleep(std::time::Duration::from_millis(timeout_ms));
@@ -329,6 +457,19 @@ pub fn terminal_size() -> (usize, usize) {
         let ret = unsafe { libc::ioctl(libc::STDOUT_FILENO, libc::TIOCGWINSZ, &mut ws) };
         if ret == 0 && ws.ws_col > 0 && ws.ws_row > 0 {
             return (ws.ws_col as usize, ws.ws_row as usize);
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        let handle = unsafe { GetStdHandle(-11) }; // STD_OUTPUT_HANDLE = -11
+        if !handle.is_null() {
+            let mut csbi: CONSOLE_SCREEN_BUFFER_INFO = unsafe { std::mem::zeroed() };
+            if unsafe { GetConsoleScreenBufferInfo(handle, &mut csbi) } != 0 {
+                let cols = (csbi.srWindow.Right - csbi.srWindow.Left + 1).max(1) as usize;
+                let rows = (csbi.srWindow.Bottom - csbi.srWindow.Top + 1).max(1) as usize;
+                return (cols, rows);
+            }
         }
     }
 

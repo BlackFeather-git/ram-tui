@@ -307,10 +307,11 @@ pub fn render_snapshot(
     let clock_w = visible_cell_width(&clock);
     let hostname_trunc = truncate_plain_cells(&hostname, 16, "~");
 
+    let os_name = core_render::format::os_display_name();
     let header_left = if ui_cols >= 64 {
         format!(
             "{h}{bold}RAM-TUI{r}  {m}\u{00b7}{r}  {t}{hostname_trunc}{r}  {m}\u{00b7}{r}  \
-             {a}{theme_name}{r}  {m}\u{00b7}{r}  {m}Linux{r}  {m}\u{00b7}{r}  {m}{mode}{r}{state_str}"
+             {a}{theme_name}{r}  {m}\u{00b7}{r}  {m}{os_name}{r}  {m}\u{00b7}{r}  {m}{mode}{r}{state_str}"
         )
     } else if ui_cols >= 44 {
         format!(
@@ -737,16 +738,5 @@ fn hostname() -> String {
 
 /// Get current local time as HH:MM:SS.
 fn local_now() -> String {
-    #[cfg(unix)]
-    unsafe {
-        let mut t: libc::time_t = 0;
-        libc::time(&mut t);
-        let mut tm: libc::tm = std::mem::zeroed();
-        libc::localtime_r(&t, &mut tm);
-        format!("{:02}:{:02}:{:02}", tm.tm_hour, tm.tm_min, tm.tm_sec)
-    }
-    #[cfg(not(unix))]
-    {
-        "00:00:00".to_string()
-    }
+    core_render::format::local_now_hms()
 }
