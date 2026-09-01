@@ -1562,7 +1562,7 @@ class UpdateManager:
         # AST Target Authentication: strictly authenticate existing target as ram-tui
         try:
             with open(real_target, "r", encoding="utf-8", errors="ignore") as f:
-                target_src = f.read(65536)
+                target_src = f.read(UPDATE_MAX_SOURCE_SIZE)
             if "ram-tui" not in target_src:
                 raise ValueError("missing authentic 'ram-tui' identity banner")
             target_tree = ast.parse(target_src, filename=real_target)
