@@ -82,6 +82,26 @@ if [ ! -s "${TMP_BIN}" ]; then
     exit 1
 fi
 
+# Optional SHA-256 integrity check if digest file is available
+TMP_HASH=$(mktemp)
+if fetch_file "${BASE_URL}/ram.sha256" "${TMP_HASH}" 2>/dev/null; then
+    EXPECTED_HASH=$(awk '{print $1}' "${TMP_HASH}" | tr '[:upper:]' '[:lower:]')
+    ACTUAL_HASH=""
+    if command -v sha256sum >/dev/null 2>&1; then
+        ACTUAL_HASH=$(sha256sum "${TMP_BIN}" | awk '{print $1}' | tr '[:upper:]' '[:lower:]')
+    elif command -v shasum >/dev/null 2>&1; then
+        ACTUAL_HASH=$(shasum -a 256 "${TMP_BIN}" | awk '{print $1}' | tr '[:upper:]' '[:lower:]')
+    fi
+    if [ -n "${ACTUAL_HASH}" ] && [ -n "${EXPECTED_HASH}" ]; then
+        if [ "${ACTUAL_HASH}" != "${EXPECTED_HASH}" ]; then
+            echo "Error: Cryptographic SHA-256 digest mismatch. Aborting installation." >&2
+            exit 1
+        fi
+        echo "-> Integrity verified: SHA-256 (${ACTUAL_HASH:0:16}...)"
+    fi
+fi
+rm -f "${TMP_HASH}" 2>/dev/null || true
+
 # Install executable with 0755 permissions
 install -m 0755 "${TMP_BIN}" "${TARGET}"
 echo -e "\033[1;32m-> Installed executable to: ${TARGET}\033[0m"

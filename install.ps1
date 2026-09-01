@@ -19,6 +19,23 @@ Write-Host "==> Installing ram-tui for Windows..." -ForegroundColor Cyan
 
 Invoke-WebRequest -Uri "https://raw.githubusercontent.com/BlackFeather-git/ram-tui/main/ram" -OutFile $RamPath
 
+# SHA-256 integrity check if digest file is available
+try {
+    $HashRaw = (Invoke-RestMethod -Uri "https://raw.githubusercontent.com/BlackFeather-git/ram-tui/main/ram.sha256" -ErrorAction SilentlyContinue).Trim()
+    if ($HashRaw) {
+        $ExpectedHash = $HashRaw.Split()[0].ToUpper()
+        $ActualHash = (Get-FileHash -Path $RamPath -Algorithm SHA256).Hash.ToUpper()
+        if ($ExpectedHash -and ($ActualHash -ne $ExpectedHash)) {
+            Remove-Item -Path $RamPath -Force -ErrorAction SilentlyContinue
+            Write-Error "SHA-256 integrity verification failed. Aborting installation."
+            exit 1
+        }
+        Write-Host "-> Integrity verified: SHA-256 ($($ActualHash.Substring(0, 16))...)" -ForegroundColor Green
+    }
+} catch {
+    # Non-blocking if sha256 file not accessible
+}
+
 # Create launcher shims
 $CmdContent = "@echo off`r`npython `"$RamPath`" %*"
 Set-Content -Path $CmdPath -Value $CmdContent -Force
