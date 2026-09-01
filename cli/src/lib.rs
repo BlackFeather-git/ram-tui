@@ -17,9 +17,9 @@ use ui::themes::{get_palette, next_cycling_mode, next_theme, THEME_NAMES};
 
 pub mod diagnostics;
 
-const VERSION: &str = "1.0.0-rc.3";
+const VERSION: &str = "1.0.0-rc.4";
 
-/// ram-tui v1.0.0-rc.3 — Fast, aesthetic, native terminal memory monitor
+/// ram-tui v1.0.0-rc.4 — Fast, aesthetic, native terminal memory monitor
 #[derive(Parser, Debug)]
 #[command(name = "ram", version = VERSION, about)]
 struct Args {
@@ -63,7 +63,7 @@ struct Args {
     #[arg(long, default_value = "block", value_parser = ["block", "braille"])]
     symbol: String,
 
-    /// Process sorting metric: 'rss', 'pss', 'uss', or 'name' (default: rss)
+    /// Process sorting metric: 'rss', 'pss' (Linux), 'uss', or 'name' (default: rss)
     #[arg(long, default_value = "rss", value_parser = ["rss", "pss", "uss", "name"])]
     sort: String,
 
@@ -252,7 +252,19 @@ pub fn run() {
     };
 
     let mut sort_metric = match args.sort.as_str() {
-        "pss" => SortMetric::Pss,
+        "pss" => {
+            #[cfg(target_os = "linux")]
+            {
+                SortMetric::Pss
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                diagnostics::log_debug(
+                    "PSS is Linux smaps specific; falling back to USS on this platform",
+                );
+                SortMetric::Uss
+            }
+        }
         "uss" => SortMetric::Uss,
         "name" => SortMetric::Name,
         _ => SortMetric::Rss,
@@ -670,12 +682,23 @@ pub fn run() {
                     re_render = true;
                 }
                 Key::Char('o' | 'O') => {
-                    sort_metric = match sort_metric {
-                        SortMetric::Rss => SortMetric::Pss,
-                        SortMetric::Pss => SortMetric::Uss,
-                        SortMetric::Uss => SortMetric::Name,
-                        SortMetric::Name => SortMetric::Rss,
-                    };
+                    #[cfg(target_os = "linux")]
+                    {
+                        sort_metric = match sort_metric {
+                            SortMetric::Rss => SortMetric::Pss,
+                            SortMetric::Pss => SortMetric::Uss,
+                            SortMetric::Uss => SortMetric::Name,
+                            SortMetric::Name => SortMetric::Rss,
+                        };
+                    }
+                    #[cfg(not(target_os = "linux"))]
+                    {
+                        sort_metric = match sort_metric {
+                            SortMetric::Rss => SortMetric::Uss,
+                            SortMetric::Uss => SortMetric::Name,
+                            _ => SortMetric::Rss,
+                        };
+                    }
                     cached_procs.sort_by(|a, b| {
                         match sort_metric {
                             SortMetric::Rss => b.rss.cmp(&a.rss),

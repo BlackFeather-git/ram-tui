@@ -189,44 +189,73 @@ pub fn validate_process_identity(
     true
 }
 
-/// Open a Linux pidfd for race-free process signaling (Linux >= 5.3).
+/// Open a Linux pidfd for race-free process signaling (Linux >= 5.3 on supported architectures).
 #[cfg(target_os = "linux")]
 pub fn open_pidfd(pid: u32) -> Option<i32> {
-    #[cfg(target_arch = "x86_64")]
-    const SYS_PIDFD_OPEN: libc::c_long = 434;
-    #[cfg(target_arch = "aarch64")]
-    const SYS_PIDFD_OPEN: libc::c_long = 434;
-    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
-    const SYS_PIDFD_OPEN: libc::c_long = 434;
-
-    let fd = unsafe { libc::syscall(SYS_PIDFD_OPEN, pid as libc::pid_t, 0) };
-    if fd >= 0 {
-        Some(fd as i32)
-    } else {
-        None
+    #[cfg(any(
+        target_arch = "x86_64",
+        target_arch = "aarch64",
+        target_arch = "riscv64",
+        target_arch = "x86",
+        target_arch = "arm"
+    ))]
+    {
+        const SYS_PIDFD_OPEN: libc::c_long = 434;
+        let fd = unsafe { libc::syscall(SYS_PIDFD_OPEN, pid as libc::pid_t, 0) };
+        if fd >= 0 {
+            return Some(fd as i32);
+        }
     }
+
+    #[cfg(not(any(
+        target_arch = "x86_64",
+        target_arch = "aarch64",
+        target_arch = "riscv64",
+        target_arch = "x86",
+        target_arch = "arm"
+    )))]
+    {
+        let _ = pid;
+    }
+
+    None
 }
 
-/// Send SIGTERM via pidfd (Linux >= 5.3).
+/// Send SIGTERM via pidfd (Linux >= 5.3 on supported architectures).
 #[cfg(target_os = "linux")]
 pub fn pidfd_send_sigterm(pidfd: i32) -> bool {
-    #[cfg(target_arch = "x86_64")]
-    const SYS_PIDFD_SEND_SIGNAL: libc::c_long = 424;
-    #[cfg(target_arch = "aarch64")]
-    const SYS_PIDFD_SEND_SIGNAL: libc::c_long = 424;
-    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
-    const SYS_PIDFD_SEND_SIGNAL: libc::c_long = 424;
+    #[cfg(any(
+        target_arch = "x86_64",
+        target_arch = "aarch64",
+        target_arch = "riscv64",
+        target_arch = "x86",
+        target_arch = "arm"
+    ))]
+    {
+        const SYS_PIDFD_SEND_SIGNAL: libc::c_long = 424;
+        let ret = unsafe {
+            libc::syscall(
+                SYS_PIDFD_SEND_SIGNAL,
+                pidfd,
+                libc::SIGTERM,
+                std::ptr::null::<libc::c_void>(),
+                0,
+            )
+        };
+        ret == 0
+    }
 
-    let ret = unsafe {
-        libc::syscall(
-            SYS_PIDFD_SEND_SIGNAL,
-            pidfd,
-            libc::SIGTERM,
-            std::ptr::null::<libc::c_void>(),
-            0,
-        )
-    };
-    ret == 0
+    #[cfg(not(any(
+        target_arch = "x86_64",
+        target_arch = "aarch64",
+        target_arch = "riscv64",
+        target_arch = "x86",
+        target_arch = "arm"
+    )))]
+    {
+        let _ = pidfd;
+        false
+    }
 }
 
 /// Collect top-N processes by RSS from /proc.

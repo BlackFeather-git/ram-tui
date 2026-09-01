@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.0-rc.4] - 2026-09-01
+
+### Strict Architecture-Specific Pidfd, Platform-Aware Sort Metrics & Synchronization
+`RAM-TUI v1.0.0-rc.4` finalizes cross-platform telemetry contracts and hardware ABI boundaries:
+
+* **Strict Architecture-Constrained Linux Pidfd Syscalls**: Explicitly constrained `SYS_PIDFD_OPEN` (434) and `SYS_PIDFD_SEND_SIGNAL` (424) to verified architectures (`x86_64`, `aarch64`, `riscv64`, `x86`, `arm`). All unlisted or foreign architectures deterministically fall back to `validate_process_identity()`.
+* **Platform-Aware Metric Semantics & Fallback**: PSS (Proportional Set Size) is explicitly recognized as Linux procfs smaps-specific. On Windows and macOS, metric sorting falls back cleanly to Private Working Set (USS) / RSS with explicit logging and documentation, preventing silent metric confusion. Interactive hotkey `o` cleanly cycles platform-valid metrics.
+* **Elimination of `static mut`**: `ui::terminal` uses `std::sync::Mutex<Option<termios>>` and `std::sync::atomic::AtomicBool` for 100% thread-safe and signal-safe terminal restoration.
+* **Comprehensive Bidi & Zero-Width Sanitizer**: Expanded `core_render::format::sanitize_text()` to cover the full Unicode bidirectional override family (`\u{202A}`..=`\u{202E}`, `\u{2066}`..=`\u{2069}`) and zero-width/formatting characters with automated unit tests.
+
+---
+
 ## [1.0.0-rc.3] - 2026-09-01
 
 ### Cross-Platform Facade, Signal Model & Pidfd Hardening

@@ -8,16 +8,16 @@
 
 <br />
 
-<img src="assets/hero.png?v=1.0.0-rc.3" alt="RAM-TUI live terminal interface" width="860" />
+<img src="assets/hero.png?v=1.0.0-rc.4" alt="RAM-TUI live terminal interface" width="860" />
 
 <br />
 
 [![CI](https://github.com/BlackFeather-git/ram-tui/actions/workflows/ci.yml/badge.svg?branch=test)](https://github.com/BlackFeather-git/ram-tui/actions)
-[![Latest Release](https://img.shields.io/badge/release-v1.0.0--rc.3-brightgreen.svg)](https://github.com/BlackFeather-git/ram-tui/releases)
+[![Latest Release](https://img.shields.io/badge/release-v1.0.0--rc.4-brightgreen.svg)](https://github.com/BlackFeather-git/ram-tui/releases)
 [![Rust 1.70+](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-brightgreen.svg)]()
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-64%20passed-success)](cli/tests/)
+[![Tests](https://img.shields.io/badge/tests-65%20passed-success)](cli/tests/)
 
 [Why RAM-TUI?](#why-ram-tui) · [Benchmarks](#performance--benchmarks) · [Quick Start](#quick-start) · [Installation](#installation) · [Color Themes](#color-themes) · [Display Modes](#display-modes) · [Kernel Telemetry](#deep-kernel-telemetry) · [Hotkeys](#interactive-hotkeys) · [Status Bars](#status-bar-integration) · [JSON](#json-telemetry) · [Architecture](#architecture) · [Security](#security--updates)
 
@@ -187,8 +187,8 @@ Unlike traditional monitors that only report coarse RSS, `RAM-TUI v1.0.0` interf
 └───────────────────────┴───────────────────────────────┴─────────────────────┘
 ```
 
-* **PSS (Proportional Set Size)**: Accounts for shared memory by dividing shared pages evenly among sharing processes (`--sort pss`).
-* **USS (Unique Set Size)**: Measures true private memory that would be returned to the OS if the process were killed (`--sort uss`).
+* **PSS (Proportional Set Size)**: Accounts for shared memory by dividing shared pages evenly among sharing processes (`--sort pss`, Linux-specific via `/proc/<pid>/smaps_rollup`).
+* **USS (Unique Set Size)**: Measures true private memory that would be returned to the OS if the process were killed (`--sort uss`, supported on Linux and Windows).
 * **Cgroups v2 & v1 Detection**: Detects container memory limits (`memory.max` / `memory.limit_in_bytes`) and automatically budgets meters inside Docker and Kubernetes.
 
 ---
@@ -207,7 +207,7 @@ Control `RAM-TUI` live during interactive monitoring:
 | `m` / `M` | Cycle display modes live (**Hero** -> **Compact** -> **Mini**). |
 | `1` | Group processes by executable name (default). |
 | `2` | Display individual process PIDs. |
-| `o` / `O` | Cycle sort metric live (**RSS** -> **PSS** -> **USS** -> **Alphabetical**). |
+| `o` / `O` | Cycle sort metric live (**RSS** -> **PSS** [Linux] -> **USS** -> **Alphabetical**). |
 | `g` / `G` | Toggle 60-second historical trend sparkline. |
 | `↑` / `↓` (`k`/`j`) | Navigate cursor across process entries. |
 | `Enter` / `e` / `Tab`| Expand / Collapse process tree group (showing child PIDs `├─`, `└─`). |
