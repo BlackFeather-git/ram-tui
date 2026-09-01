@@ -86,14 +86,9 @@ pub fn os_display_name() -> &'static str {
     }
 }
 
-/// System civil date-time (Year, Month, Day, Hour, Min, Sec) derived in pure Rust from SystemTime.
-pub fn system_now_civil() -> (u32, u32, u32, u32, u32, u32) {
-    let now = std::time::SystemTime::now();
-    let secs = now
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-
+/// Convert Unix epoch seconds into civil date-time (Year, Month, Day, Hour, Min, Sec) in pure Rust.
+/// Uses Howard Hinnant's integer algorithm (Euclidean affine calendar).
+pub fn epoch_to_civil(secs: u64) -> (u32, u32, u32, u32, u32, u32) {
     let mut days = (secs / 86400) as i64;
     let day_secs = (secs % 86400) as u32;
 
@@ -115,21 +110,84 @@ pub fn system_now_civil() -> (u32, u32, u32, u32, u32, u32) {
     (year, m, d, hour, min, sec)
 }
 
-/// Return the current time as formatted ISO-8601 string (e.g. "2026-09-02T00:25:30").
+/// Obtain current local civil date-time (Year, Month, Day, Hour, Min, Sec).
+/// Uses native OS timezone on Unix and Windows with deterministic pure-Rust fallback.
+pub fn local_now_civil() -> (u32, u32, u32, u32, u32, u32) {
+    #[cfg(unix)]
+    {
+        let mut t: libc::time_t = 0;
+        unsafe {
+            libc::time(&mut t);
+            let mut tm: libc::tm = std::mem::zeroed();
+            libc::localtime_r(&t, &mut tm);
+            (
+                (tm.tm_year + 1900) as u32,
+                (tm.tm_mon + 1) as u32,
+                tm.tm_mday as u32,
+                tm.tm_hour as u32,
+                tm.tm_min as u32,
+                tm.tm_sec as u32,
+            )
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        #[repr(C)]
+        #[derive(Default)]
+        struct SYSTEMTIME {
+            wYear: u16,
+            wMonth: u16,
+            wDayOfWeek: u16,
+            wDay: u16,
+            wHour: u16,
+            wMinute: u16,
+            wSecond: u16,
+            wMilliseconds: u16,
+        }
+        extern "system" {
+            fn GetLocalTime(lpSystemTime: *mut SYSTEMTIME);
+        }
+        let mut st: SYSTEMTIME = unsafe { std::mem::zeroed() };
+        unsafe {
+            GetLocalTime(&mut st);
+        }
+        (
+            st.wYear as u32,
+            st.wMonth as u32,
+            st.wDay as u32,
+            st.wHour as u32,
+            st.wMinute as u32,
+            st.wSecond as u32,
+        )
+    }
+
+    #[cfg(not(any(unix, windows)))]
+    {
+        let now = std::time::SystemTime::now();
+        let secs = now
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        epoch_to_civil(secs)
+    }
+}
+
+/// Return the current time as formatted ISO-8601 string in local time (e.g. "2026-09-02T00:25:30").
 pub fn iso_timestamp() -> String {
-    let (y, m, d, hh, mm, ss) = system_now_civil();
+    let (y, m, d, hh, mm, ss) = local_now_civil();
     format!("{y:04}-{m:02}-{d:02}T{hh:02}:{mm:02}:{ss:02}")
 }
 
 /// Return the current time formatted as "YYYY-MM-DD HH:MM:SS" for logging.
 pub fn log_timestamp() -> String {
-    let (y, m, d, hh, mm, ss) = system_now_civil();
+    let (y, m, d, hh, mm, ss) = local_now_civil();
     format!("{y:04}-{m:02}-{d:02} {hh:02}:{mm:02}:{ss:02}")
 }
 
-/// Return current time as "HH:MM:SS".
+/// Return current local time as "HH:MM:SS".
 pub fn local_now_hms() -> String {
-    let (_, _, _, hh, mm, ss) = system_now_civil();
+    let (_, _, _, hh, mm, ss) = local_now_civil();
     format!("{hh:02}:{mm:02}:{ss:02}")
 }
 
@@ -180,5 +238,26 @@ mod tests {
 
         let os = os_display_name();
         assert!(!os.is_empty());
+    }
+
+    #[test]
+    fn test_epoch_to_civil_known_dates() {
+        // Unix epoch: 1970-01-01 00:00:00 UTC
+        assert_eq!(epoch_to_civil(0), (1970, 1, 1, 0, 0, 0));
+
+        // 2000-01-01 00:00:00 UTC = 946684800
+        assert_eq!(epoch_to_civil(946684800), (2000, 1, 1, 0, 0, 0));
+
+        // Leap day 2000-02-29 12:34:56 UTC = 951827696
+        assert_eq!(epoch_to_civil(951827696), (2000, 2, 29, 12, 34, 56));
+
+        // Leap day 2024-02-29 00:00:00 UTC = 1709164800
+        assert_eq!(epoch_to_civil(1709164800), (2024, 2, 29, 0, 0, 0));
+
+        // Year boundary 2026-12-31 23:59:59 UTC = 1798761599
+        assert_eq!(epoch_to_civil(1798761599), (2026, 12, 31, 23, 59, 59));
+
+        // Next day 2027-01-01 00:00:00 UTC = 1798761600
+        assert_eq!(epoch_to_civil(1798761600), (2027, 1, 1, 0, 0, 0));
     }
 }

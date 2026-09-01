@@ -1,15 +1,15 @@
 # ram-tui — Maintainer Architectural & Security Audit Log
 
-Date: 2026-09-01  
+Date: 2026-09-02  
 Maintainer: Raven (BlackFeather) https://github.com/BlackFeather-git/ram-tui  
-Latest Verified State: `v1.0.0-rc.1` (Native Rust Architecture & Deep Kernel Telemetry)  
-Historical Reference: Initial audit completed at `v0.4.3`, hardened through `v0.5.x`–`v0.7.0` (Python), and fully re-architected in Rust for `v1.0.0-rc.1`.
+Latest Verified State: `v1.0.0-rc.5` (Final Stabilization Baseline)  
+Historical Reference: Initial audit completed at `v0.4.3`, hardened through `v0.5.x`–`v0.7.0` (Python), and fully re-architected in Rust for `v1.0.0-rc.5`.
 
 ---
 
 ## 1. Executive Summary
 
-`ram-tui v1.0.0-rc.1` is a standalone, ultra-low-overhead terminal memory monitor and process telemetry engine written in pure, native Rust. It delivers sub-millisecond execution latency, a 2.2MB stripped binary footprint, and deep kernel telemetry (PSS, USS, Cgroups v2/v1 container detection).
+`ram-tui v1.0.0-rc.5` is a standalone, ultra-low-overhead terminal memory monitor and process telemetry engine written in pure, native Rust. It delivers sub-millisecond execution latency, a 2.2MB stripped binary footprint, and deep kernel telemetry (PSS, USS, Cgroups v2/v1 container detection).
 
 This document details the architectural integrity, resolution of confirmed audit findings (`C-001` through `C-405`), memory safety guarantees, zero-allocation render loop, and multi-platform native subsystems.
 
@@ -32,7 +32,7 @@ This document details the architectural integrity, resolution of confirmed audit
 3. **`C-403` (Flicker-Free Differential Frame Buffer)**: Developed double-buffered frame diffing in `core_render::framebuf::FrameBuffer`, emitting only modified rows per frame to eliminate terminal flicker and reduce I/O overhead.
 4. **`C-404` (Auto-Ranging Dynamic Sparkline)**: Implemented dynamic spread calculation ($\Delta = \max - \min$) over the 60-second historical window in `core_render::sparkline::render_sparkline`, rendering responsive fluid wave glyphs (` ▂▃▄▅▆▇█`).
 5. **`C-405` (Bounded Cursor & Interactive Filter Stability)**: Bounded `selected_idx` strictly to `filtered_procs.len().saturating_sub(1)` and separated search typing state (`search_active`) from locked filter state (`search_query`).
-6. **`C-301` (Cryptographic Trust Chain & In-Place Updater)**: Implemented atomic temporary file replacement (`.ram-update-*.tmp` + `fsync` + `chmod 755` + `std::fs::rename`) with strict SHA-256 digest validation.
+6. **`C-301` (Atomic In-Place Updater)**: Implemented atomic temporary file replacement (`.ram-update-*.tmp` + `fsync` + `chmod 755` + `std::fs::rename`) with strict SHA-256 digest validation.
 7. **`C-303` (TOCTOU & Symlink Guard)**: Prevents symlink hijacking by validating the physical binary path and directory write permissions prior to atomic replacement.
 8. **`C-003` (PID-Reuse Safety)**: Keyed process starttime identity from field 22 of `/proc/<pid>/stat` to guard against PID wraparound during prolonged monitoring sessions.
 9. **`C-008` (Unicode & ANSI Sanitization)**: `sanitize_text()` strips ANSI escape sequences, ASCII control characters, and Unicode directional overrides (Bidi controls).
@@ -42,9 +42,9 @@ This document details the architectural integrity, resolution of confirmed audit
 
 ## 4. Automated Testing & Verification Suite
 
-The test suite across the Cargo workspace consists of **66 automated tests**:
+The test suite across the Cargo workspace consists of **67 automated tests**:
 * **`collector` (31 unit tests)**: Validates `/proc/meminfo`, zram/disk swap detection, Cgroups v2/v1 boundary parsing, PID-reuse starttime tracking, RSS/PSS/USS aggregation, and process hierarchy grouping.
-* **`core_render` (24 unit tests)**: Validates Unicode cell-width calculation (CJK, ZWJ, combining characters), TrueColor RGB gradient interpolation, IEC byte boundary formatting, frame-buffer row diffing, and civil timestamp conversion.
+* **`core_render` (25 unit tests)**: Validates Unicode cell-width calculation (CJK, ZWJ, combining characters), TrueColor RGB gradient interpolation, IEC byte boundary formatting, frame-buffer row diffing, civil timestamp conversion, and leap-year calendar algorithms.
 * **`ui` (5 unit tests)**: Validates 13 TrueColor theme palettes, mode cycling, and monochrome fallback formatting.
 * **`cli` (6 integration tests)**: Validates `--once` execution, CLI help documentation, sorting arguments (`--sort pss|uss|rss|name`), JSON telemetry schema conformance, `--spark` rolling trend flag, and zero-emoji regression invariant.
 

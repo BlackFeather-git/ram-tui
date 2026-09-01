@@ -17,7 +17,7 @@
 [![Rust 1.70+](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-brightgreen.svg)]()
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-66%20passed-success)](cli/tests/)
+[![Tests](https://img.shields.io/badge/tests-67%20passed-success)](cli/tests/)
 
 [Why RAM-TUI?](#why-ram-tui) · [Benchmarks](#performance--benchmarks) · [Quick Start](#quick-start) · [Installation](#installation) · [Color Themes](#color-themes) · [Display Modes](#display-modes) · [Kernel Telemetry](#deep-kernel-telemetry) · [Hotkeys](#interactive-hotkeys) · [Status Bars](#status-bar-integration) · [JSON](#json-telemetry) · [Architecture](#architecture) · [Security](#security--updates)
 
@@ -213,7 +213,7 @@ Control `RAM-TUI` live during interactive monitoring:
 | `Enter` / `e` / `Tab`| Expand / Collapse process tree group (showing child PIDs `├─`, `└─`). |
 | `/` | Open live interactive search & filter bar. |
 | `Esc` | Clear search filter or close theme menu. |
-| `x` / `K` | Signal-kill selected process (with safety confirmation prompt `[y/N]`). |
+| `x` / `K` | Terminate selected process (with safety confirmation prompt `[y/N]`). |
 | `+` / `=` | Increase refresh rate (+25ms). |
 | `-` / `_` | Decrease refresh rate (-50ms). |
 | `h` / `?` | Toggle interactive hotkey help footer. |
@@ -261,10 +261,10 @@ ram --json --once | jq '.memory'
 
 ```json
 {
-  "timestamp": "2026-09-01T21:50:31.123456+05:30",
+  "timestamp": "2026-09-02T00:45:00",
   "hostname": "shadow",
   "os": "Linux",
-  "version": "1.0.0-rc.1",
+  "version": "1.0.0-rc.5",
   "memory": {
     "total": 33299738624,
     "available": 26884991488,

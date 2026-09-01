@@ -8,3 +8,6 @@ description = "Frame buffer, row diffing, and ANSI rendering primitives for ram-
 [dependencies]
 unicode-width = "0.2"
 regex = "1"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
