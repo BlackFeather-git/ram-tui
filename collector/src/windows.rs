@@ -58,9 +58,14 @@ struct PERFORMANCE_INFORMATION {
 #[cfg(target_os = "windows")]
 extern "system" {
     fn GlobalMemoryStatusEx(lpBuffer: *mut MEMORYSTATUSEX) -> i32;
-    fn K32GetPerformanceInfo(pPerformanceInformation: *mut PERFORMANCE_INFORMATION, cb: u32) -> i32;
+    fn K32GetPerformanceInfo(pPerformanceInformation: *mut PERFORMANCE_INFORMATION, cb: u32)
+        -> i32;
     fn K32EnumProcesses(lpidProcess: *mut u32, cb: u32, lpcbNeeded: *mut u32) -> i32;
-    fn OpenProcess(dwDesiredAccess: u32, bInheritHandle: i32, dwProcessId: u32) -> *mut libc::c_void;
+    fn OpenProcess(
+        dwDesiredAccess: u32,
+        bInheritHandle: i32,
+        dwProcessId: u32,
+    ) -> *mut libc::c_void;
     fn CloseHandle(hObject: *mut libc::c_void) -> i32;
     fn K32GetProcessMemoryInfo(
         hProcess: *mut libc::c_void,
