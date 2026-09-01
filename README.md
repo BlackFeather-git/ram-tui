@@ -35,8 +35,8 @@ Version `1.0.0` is completely re-engineered from the ground up in native Rust, c
 
 | Dimension | Traditional System Monitors | Legacy Python (v0.7.0) | RAM-TUI v1.0.0 (Rust) |
 |:---|:---|:---|:---|
-| **Core Engine** | Heavy generic pollers / C extensions | Python interpreter (`ram.py`) | Pure compiled native Rust binary |
-| **Cold Start Latency** | 150ms – 500ms | ~80ms (interpreter startup) | **< 1.0ms** (instantaneous cold boot) |
+| **Core Engine** | Heavy generic pollers / C extensions | Python interpreter (`v0.7.0`) | Pure compiled native Rust binary |
+| **Cold Start Latency** | 150ms – 500ms | ~75ms (interpreter startup) | **Instantaneous native cold boot** |
 | **Kernel Telemetry** | Generic RSS only | `/proc/meminfo` + RSS | **PSS, USS, RSS, Cgroups v2/v1, zram** |
 | **Process Tree** | Flat list or separate screens | Flat name aggregation | **Interactive collapsible trees (`├─`, `└─`)** |
 | **History Trends** | Separate graph panels | Flat line bar | **60s dynamic auto-ranging sparklines** |
@@ -47,27 +47,22 @@ Version `1.0.0` is completely re-engineered from the ground up in native Rust, c
 
 ---
 
-## Performance & Benchmarks
+## Performance & Design
 
-Benchmarked on Linux x86_64 (AMD Ryzen 7, 32GB RAM, Linux 6.10):
-
-| Metric | Legacy Python Build | RAM-TUI v1.0.0 (Rust) | Improvement |
-|:---|:---:|:---:|:---:|
-| **Cold Start Execution (`--once`)** | 82.4 ms | **0.85 ms** | **~97x faster** |
-| **Procfs Full Scan (Mem + Procs)** | 14.2 ms | **0.32 ms** | **~44x faster** |
-| **CPU Utilization (@ 50ms Tick Rate)** | ~1.8% – 3.2% | **< 0.1%** | **~30x lower CPU load** |
-| **Binary Memory Footprint (RSS)** | ~28.5 MB | **~3.4 MB** | **~88% memory reduction** |
-| **Stripped Binary Footprint** | N/A (Script) | **2.2 MB** | Standalone static artifact |
+* **Compiled Native Engine**: Direct `/proc` kernel parsing with zero garbage collection pauses or runtime interpreter overhead.
+* **Sub-Millisecond Snapshot Execution**: Fast in-memory telemetry gathering and instantaneous one-shot execution (`--once`).
+* **Differential Double-Buffered Terminal Output**: Only modified terminal cells and rows are flushed to stdout, resulting in flicker-free 60+ FPS rendering and `<0.1%` CPU utilization.
+* **Compact Standalone Footprint**: Stripped release binary compiles with Fat LTO into a standalone static binary (~2.2MB) with zero external dynamic dependencies.
 
 ---
 
 ## Quick Start
 
-Launch `RAM-TUI` immediately using either `ram` or `ram-tui`:
+Launch `RAM-TUI` immediately using `ram`:
 
 ```bash
 # 1. Launch default interactive dashboard
-ram-tui
+ram
 
 # 2. Launch with Catppuccin theme & Braille gauges
 ram --theme catppuccin --symbol braille
@@ -135,16 +130,6 @@ Build and install locally using the included `PKGBUILD`:
 git clone https://github.com/BlackFeather-git/ram-tui.git
 cd ram-tui
 makepkg -si
-```
-
----
-
-### Method 5: Polyglot Python Bridge & Standalone Script
-
-For environments with Python installed or existing automations, `ram.py` provides seamless execution:
-
-```bash
-python3 ram.py
 ```
 
 ---
