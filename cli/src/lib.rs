@@ -527,6 +527,13 @@ pub fn run() {
                             libc::kill(target.pid as libc::pid_t, libc::SIGTERM);
                         }
                     }
+                    #[cfg(not(unix))]
+                    {
+                        diagnostics::log_debug(&format!(
+                            "Process termination is unsupported on this platform: {} (PID: {})",
+                            target.name, target.pid
+                        ));
+                    }
                 }
                 re_render = true;
                 continue;
