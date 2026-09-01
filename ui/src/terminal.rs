@@ -1,6 +1,12 @@
 //! Terminal raw mode, alternate screen, signal management, and non-blocking key input.
 
-#![allow(unused_imports, dead_code, non_snake_case)]
+#![allow(
+    clippy::all,
+    non_snake_case,
+    non_camel_case_types,
+    dead_code,
+    unused_imports
+)]
 
 use std::io::{self, Write};
 use std::sync::atomic::{AtomicBool, Ordering};

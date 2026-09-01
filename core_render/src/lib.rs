@@ -8,6 +8,13 @@
 pub mod ansi;
 pub mod cellwidth;
 pub mod color;
+#[allow(
+    clippy::all,
+    non_snake_case,
+    non_camel_case_types,
+    dead_code,
+    unused_imports
+)]
 pub mod format;
 pub mod framebuf;
 pub mod meter;
