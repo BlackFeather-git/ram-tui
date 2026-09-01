@@ -5,6 +5,15 @@ All notable changes to `ram-tui` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0-rc.3] - 2026-09-01
+
+### Security & Hardening
+- **Mandatory Authenticated Installer Verification**: Upgraded [`install.sh`](install.sh) (Linux/macOS) and [`install.ps1`](install.ps1) (Windows) to strictly require and verify both SHA-256 integrity digests and maintainer RSA-2048 PKCS#1 v1.5 digital signatures (`ram.sig`) before file installation, creating a complete end-to-end fail-closed trust chain.
+- **Python 3.8+ Compatibility Baseline**: Formally updated runtime baseline to Python 3.8+ (dropping legacy 3.6/3.7 targets) aligned with modern typing, FFI, and CI coverage.
+- **Zero-Dependency Security Documentation**: Streamlined [`SECURITY.md`](SECURITY.md) to provide pure standard-library verification commands without external third-party package references.
+
+---
+
 ## [0.7.0-rc.2] - 2026-09-01
 
 ### Added

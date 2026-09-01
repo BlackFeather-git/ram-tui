@@ -1,12 +1,12 @@
 # Maintainer: Raven <blackfeatheractual@proton.me>
 pkgname=ram-tui
-pkgver=0.7.0rc2
+pkgver=0.7.0rc3
 pkgrel=1
 pkgdesc="Lightweight, aesthetic, cross-platform real-time terminal memory monitor with zero dependencies"
 arch=('any')
 url="https://github.com/BlackFeather-git/ram-tui"
 license=('MIT')
-depends=('python>=3.6')
+depends=('python>=3.8')
 provides=('ram')
 conflicts=('ram')
 source=("$pkgname-$pkgver.tar.gz::https://github.com/BlackFeather-git/ram-tui/archive/refs/tags/v$pkgver.tar.gz")

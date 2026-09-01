@@ -53,22 +53,27 @@ Security reports receive an initial response within 24 hours. Validated issues a
 * No private keys or unencrypted signing materials are stored on public CI servers or repository branches.
 
 ### Manual Verification of Release Assets
-Users who wish to verify downloaded release artifacts manually can do so with standard command-line tools:
+Users who wish to verify downloaded release artifacts manually can do so with standard command-line tools without any third-party Python packages:
 
 1. **Verify SHA-256 Checksum**:
    ```bash
    sha256sum -c ram.sha256
    ```
 
-2. **Verify Maintainer RSA Digital Signature**:
+2. **Verify Maintainer RSA-2048 Digital Signature (Zero Dependencies)**:
    ```bash
-   # Extract maintainer public key from ram executable
    python3 -c "
-   import ram, base64
-   from Crypto.PublicKey import RSA # or standard python arithmetic
+   import importlib.machinery, importlib.util, sys
+   loader = importlib.machinery.SourceFileLoader('ram_mod', 'ram')
+   spec = importlib.util.spec_from_loader('ram_mod', loader)
+   m = importlib.util.module_from_spec(spec)
+   loader.exec_module(m)
+   with open('ram', 'rb') as f: data = f.read()
+   with open('ram.sig', 'r') as f: sig = f.read().strip()
+   valid = m.verify_release_signature(data, sig)
+   print('Signature verification:', 'VALID (Authentic Release)' if valid else 'INVALID')
+   sys.exit(0 if valid else 1)
    "
-   # Verify signature against downloaded binary
-   openssl dgst -sha256 -verify <(openssl rsa -in maintainer_public.pem -pubin) -signature <(base64 -d ram.sig) ram
    ```
 
 ### Key Rotation & Revocation Procedure
