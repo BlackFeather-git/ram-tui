@@ -1,6 +1,3 @@
-//! Native Windows telemetry backend using GlobalMemoryStatusEx and PSAPI.
-
-use crate::cgroup::CgroupInfo;
 use crate::meminfo::MemInfo;
 use crate::processes::{ProcessChild, ProcessInfo, SortMetric};
 use std::collections::HashMap;
