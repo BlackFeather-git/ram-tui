@@ -307,18 +307,18 @@ ram --json --once | jq '.memory'
 
 | Theme | Preview | Gradient Spectrum |
 |:---|:---:|:---|
-| **`catppuccin`** | <img src="assets/themes/catppuccin.png" width="400" alt="Catppuccin theme preview" /> | Sapphire (`#74C7EC`) → Teal (`#94E2D5`) → Mauve (`#CBA6F7`) → Maroon (`#F38BA8`) |
-| **`dracula`** | <img src="assets/themes/dracula.png" width="400" alt="Dracula theme preview" /> | Cyan (`#8BE9FD`) → Purple (`#BD93F9`) → Pink (`#FF79C6`) → Red (`#FF5555`) |
-| **`tokyo-night`** | <img src="assets/themes/tokyo-night.png" width="400" alt="Tokyo Night theme preview" /> | Storm Cyan (`#7DCFFF`) → Tokyo Blue (`#7AA2F7`) → Magenta (`#BB9AF7`) → Red (`#F7768E`) |
-| **`nord`** | <img src="assets/themes/nord.png" width="400" alt="Nord theme preview" /> | Frost Cyan (`#88C0D0`) → Frost Blue (`#81A1C1`) → Yellow (`#EBCB8B`) → Aurora Red (`#BF616A`) |
-| **`gruvbox`** | <img src="assets/themes/gruvbox.png" width="400" alt="Gruvbox theme preview" /> | Aqua (`#8EC07C`) → Green (`#B8BB26`) → Warm Yellow (`#FABD2F`) → Orange Red (`#FB4934`) |
-| **`cyberpunk`** | <img src="assets/themes/cyberpunk.png" width="400" alt="Cyberpunk theme preview" /> | Neon Cyan (`#00E5FF`) → Electric Yellow (`#F4FF00`) → Hot Pink (`#FF2A9D`) → Crimson (`#FF003C`) |
-| **`rose-pine`** | <img src="assets/themes/rose-pine.png" width="400" alt="Rose Pine theme preview" /> | Foam (`#9CCFD8`) → Iris (`#C4A7E7`) → Gold (`#F6C177`) → Love Red (`#EB6F92`) |
-| **`everforest`** | <img src="assets/themes/everforest.png" width="400" alt="Everforest theme preview" /> | Forest Green (`#A7C080`) → Sage (`#83C092`) → Yellow (`#DBBC7F`) → Red (`#E67E80`) |
-| **`kanagawa`** | <img src="assets/themes/kanagawa.png" width="400" alt="Kanagawa theme preview" /> | Wave Blue (`#7E9CD8`) → Spring Green (`#98BB6C`) → Sakura Pink (`#D27E99`) → Autumn Red (`#C34043`) |
-| **`monokai`** | <img src="assets/themes/monokai.png" width="400" alt="Monokai theme preview" /> | Cyan (`#66D9EF`) → Bright Green (`#A6E22E`) → Yellow (`#E6DB74`) → Magenta (`#F92672`) |
-| **`solarized`** | <img src="assets/themes/solarized.png" width="400" alt="Solarized theme preview" /> | Cyan (`#2AA198`) → Blue (`#268BD2`) → Warm Yellow (`#B58900`) → Red (`#DC322F`) |
-| **`default`** | <img src="assets/themes/default.png" width="400" alt="Default theme preview" /> | Dark Blue (`#2D55CD`) → Royal Violet (`#7350DC`) → Midnight Purple (`#B45AE1`) → Neon Lavender (`#EB8CFF`) |
+| **`default`** | <img src="assets/themes/default.png" width="400" alt="Default theme preview" /> | Electric Violet (`#7030EF`) → Neon Purple (`#A846FF`) → Vivid Fuchsia (`#DB1FFF`) → Light Lilac (`#E0B3FF`) |
+| **`catppuccin`** | <img src="assets/themes/catppuccin.png" width="400" alt="Catppuccin theme preview" /> | Sapphire (`#74C7EC`) → Teal (`#94E2D5`) → Mauve (`#CBA6F7`) → Pink (`#F5C2E7`) → Maroon (`#F38BA8`) |
+| **`dracula`** | <img src="assets/themes/dracula.png" width="400" alt="Dracula theme preview" /> | Cyan (`#8BE9FD`) → Purple (`#BD93F9`) → Pink (`#FF79C6`) → Orange (`#FFB86C`) → Red (`#FF5555`) |
+| **`tokyo-night`** | <img src="assets/themes/tokyo-night.png" width="400" alt="Tokyo Night theme preview" /> | Storm Cyan (`#7DCFFF`) → Tokyo Blue (`#7AA2F7`) → Magenta (`#BB9AF7`) → Warm Sunset (`#FF9E64`) → Red (`#F7768E`) |
+| **`nord`** | <img src="assets/themes/nord.png" width="400" alt="Nord theme preview" /> | Aurora Teal (`#8FBCBB`) → Frost Cyan (`#88C0D0`) → Frost Blue (`#81A1C1`) → Aurora Purple (`#B48EAD`) → Aurora Red (`#BF616A`) |
+| **`gruvbox`** | <img src="assets/themes/gruvbox.png" width="400" alt="Gruvbox theme preview" /> | Aqua (`#8EC07C`) → Green (`#B8BB26`) → Warm Yellow (`#FABD2F`) → Orange (`#FE8019`) → Red (`#FB4934`) |
+| **`cyberpunk`** | <img src="assets/themes/cyberpunk.png" width="400" alt="Cyberpunk theme preview" /> | Neon Cyan (`#00F0FF`) → Electric Yellow (`#FEE801`) → Hot Pink (`#FF007F`) → Neon Purple (`#9900FF`) → Crimson (`#FF003C`) |
+| **`rose-pine`** | <img src="assets/themes/rose-pine.png" width="400" alt="Rose Pine theme preview" /> | Foam (`#9CCFD8`) → Iris (`#C4A7E7`) → Gold (`#F6C177`) → Rose (`#EBBCBA`) → Love Red (`#EB6F92`) |
+| **`everforest`** | <img src="assets/themes/everforest.png" width="400" alt="Everforest theme preview" /> | Aqua (`#87C095`) → Forest Green (`#A7C080`) → Warm Yellow (`#DBBC7F`) → Orange (`#E69875`) → Soft Red (`#E67E80`) |
+| **`kanagawa`** | <img src="assets/themes/kanagawa.png" width="400" alt="Kanagawa theme preview" /> | Wave Blue (`#7E9CD8`) → Spring Green (`#98BB6C`) → Boat Yellow (`#E6C384`) → Sakura Pink (`#D27E99`) → Autumn Red (`#C34043`) |
+| **`monokai`** | <img src="assets/themes/monokai.png" width="400" alt="Monokai theme preview" /> | Cyan (`#78DCE8`) → Bright Green (`#A9DC76`) → Yellow (`#FFD866`) → Orange (`#FC9867`) → Magenta Pink (`#FF6188`) |
+| **`solarized`** | <img src="assets/themes/solarized.png" width="400" alt="Solarized theme preview" /> | Cyan (`#2AA198`) → Blue (`#268BD2`) → Violet (`#6C71C4`) → Yellow (`#B58900`) → Red (`#DC322F`) |
 | **`monochrome`** | <img src="assets/themes/monochrome.png" width="400" alt="Monochrome theme preview" /> | Pure ANSI-free grayscale (auto-selected when `NO_COLOR` is set) |
 
 ---
