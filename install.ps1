@@ -11,7 +11,9 @@ if (!(Test-Path $InstallDir)) {
 
 $RamPath = Join-Path $InstallDir "ram.exe"
 
-Write-Host "==> Installing ram-tui for Windows..." -ForegroundColor Cyan
+Write-Host "==> Welcome to RAM-TUI v1.0.0!" -ForegroundColor Cyan
+Write-Host "==> Notice: RAM-TUI has officially transitioned from Python to a native Rust binary." -ForegroundColor Yellow
+Write-Host "==> Installing ram-tui for Windows to $InstallDir..." -ForegroundColor Cyan
 
 if (Get-Command cargo -ErrorAction SilentlyContinue) {
     Write-Host "Building native binary via Cargo..." -ForegroundColor Green

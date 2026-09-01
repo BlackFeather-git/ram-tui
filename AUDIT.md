@@ -2,14 +2,14 @@
 
 Date: 2026-09-02  
 Maintainer: Raven (BlackFeather) https://github.com/BlackFeather-git/ram-tui  
-Latest Verified State: `v1.0.0-rc.5` (Final Stabilization Baseline)  
-Historical Reference: Initial audit completed at `v0.4.3`, hardened through `v0.5.x`–`v0.7.0` (Python), and fully re-architected in Rust for `v1.0.0-rc.5`.
+Latest Verified State: `v1.0.0` (Official Stable Release)  
+Historical Reference: Initial audit completed at `v0.4.3`, hardened through `v0.5.x`–`v0.7.0` (Python), and fully re-architected in Rust for `v1.0.0`.
 
 ---
 
 ## 1. Executive Summary
 
-`ram-tui v1.0.0-rc.5` is a standalone, ultra-low-overhead terminal memory monitor and process telemetry engine written in pure, native Rust. It delivers sub-millisecond execution latency, a 2.2MB stripped binary footprint, and deep kernel telemetry (PSS, USS, Cgroups v2/v1 container detection).
+`ram-tui v1.0.0` is a standalone, ultra-low-overhead terminal memory monitor and process telemetry engine written in pure, native Rust. It delivers sub-millisecond execution latency, a 2.2MB stripped binary footprint, and deep kernel telemetry (PSS, USS, Cgroups v2/v1 container detection).
 
 This document details the architectural integrity, resolution of confirmed audit findings (`C-001` through `C-405`), memory safety guarantees, zero-allocation render loop, and multi-platform native subsystems.
 

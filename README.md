@@ -13,7 +13,7 @@
 <br />
 
 [![CI](https://github.com/BlackFeather-git/ram-tui/actions/workflows/ci.yml/badge.svg?branch=test)](https://github.com/BlackFeather-git/ram-tui/actions)
-[![Latest Release](https://img.shields.io/badge/release-v1.0.0--rc.5-brightgreen.svg)](https://github.com/BlackFeather-git/ram-tui/releases)
+[![Latest Release](https://img.shields.io/badge/release-v1.0.0-brightgreen.svg)](https://github.com/BlackFeather-git/ram-tui/releases)
 [![Rust 1.70+](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-brightgreen.svg)]()
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
@@ -88,23 +88,12 @@ ram --json --once
 
 ## Installation
 
-### Method 1: Cargo (Recommended for Rust Users)
+> [!NOTE]
+> **Transition Notice (v1.0.0)**: RAM-TUI has officially transitioned from Python to a native Rust binary. If you are upgrading from an older Python version (v0.7.0), run the installer below to replace the Python script with the native binary.
 
-Install directly from source via `cargo`:
+### Method 1: One-Line Installer (Linux & macOS)
 
-```bash
-git clone https://github.com/BlackFeather-git/ram-tui.git
-cd ram-tui
-cargo install --path cli --bins
-```
-
-This installs both `ram` and `ram-tui` binaries into `~/.cargo/bin/`.
-
----
-
-### Method 2: One-Line Installer (Linux & macOS)
-
-Installs the standalone native binary and configures shell completions automatically:
+Installs the standalone native binary to `~/.local/bin`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/BlackFeather-git/ram-tui/main/install.sh | bash
@@ -112,12 +101,24 @@ curl -fsSL https://raw.githubusercontent.com/BlackFeather-git/ram-tui/main/insta
 
 ---
 
-### Method 3: Windows (PowerShell)
+### Method 2: Windows (PowerShell)
 
 Run in PowerShell or Windows Terminal:
 
 ```powershell
 irm https://raw.githubusercontent.com/BlackFeather-git/ram-tui/main/install.ps1 | iex
+```
+
+---
+
+### Method 3: Cargo (From Source)
+
+Install directly from source via `cargo`:
+
+```bash
+git clone https://github.com/BlackFeather-git/ram-tui.git
+cd ram-tui
+cargo install --path cli --bins
 ```
 
 ---
@@ -264,7 +265,7 @@ ram --json --once | jq '.memory'
   "timestamp": "2026-09-02T00:45:00",
   "hostname": "shadow",
   "os": "Linux",
-  "version": "1.0.0-rc.5",
+  "version": "1.0.0",
   "memory": {
     "total": 33299738624,
     "available": 26884991488,

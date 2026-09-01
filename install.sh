@@ -7,7 +7,9 @@ INSTALL_DIR="${HOME}/.local/bin"
 
 mkdir -p "${INSTALL_DIR}"
 
-echo "Installing ram-tui v1.0.0..."
+echo "==> Welcome to RAM-TUI v1.0.0!"
+echo "==> Notice: RAM-TUI has officially transitioned from Python to a native Rust binary."
+echo "==> Installing to ${INSTALL_DIR}..."
 
 if command -v cargo >/dev/null 2>&1; then
     echo "Building native binary via Cargo..."
