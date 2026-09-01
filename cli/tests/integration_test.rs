@@ -124,3 +124,50 @@ fn test_spark_and_debug_flags() {
         "should contain sparkline trend header when --spark is passed"
     );
 }
+
+#[test]
+fn test_zero_emoji_invariant() {
+    let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap();
+    let src_dirs = [
+        "cli/src",
+        "collector_linux/src",
+        "core_render/src",
+        "ui/src",
+    ];
+
+    fn is_emoji(ch: char) -> bool {
+        matches!(ch,
+            '\u{1F600}'..='\u{1F64F}' | // Emoticons
+            '\u{1F300}'..='\u{1F5FF}' | // Misc Symbols and Pictographs
+            '\u{1F680}'..='\u{1F6FF}' | // Transport and Map
+            '\u{1F1E0}'..='\u{1F1FF}' | // Regional Indicator Symbols (flags)
+            '\u{1F900}'..='\u{1F9FF}' | // Supplemental Symbols and Pictographs
+            '\u{1FA70}'..='\u{1FAFF}'   // Symbols and Pictographs Extended-A
+        )
+    }
+
+    for dir in src_dirs {
+        let p = manifest_dir.join(dir);
+        if let Ok(entries) = std::fs::read_dir(&p) {
+            for entry in entries.filter_map(|e| e.ok()) {
+                let file_path = entry.path();
+                if file_path.extension().is_some_and(|ext| ext == "rs") {
+                    let content = std::fs::read_to_string(&file_path).unwrap();
+                    for (line_no, line) in content.lines().enumerate() {
+                        for ch in line.chars() {
+                            assert!(
+                                !is_emoji(ch),
+                                "Zero-Emoji Invariant Violated in {}:{}: found emoji character '{ch}' (U+{:04X})",
+                                file_path.display(),
+                                line_no + 1,
+                                ch as u32
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

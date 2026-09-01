@@ -1,6 +1,7 @@
-//! Terminal raw mode, alternate screen, and non-blocking key input.
+//! Terminal raw mode, alternate screen, async-signal-safe restoration, and non-blocking key input.
 
 use std::io::{self, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Terminal key event.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -16,13 +17,45 @@ pub enum Key {
     Tab,
 }
 
+// Global C-level state for async-signal-safe cleanup on SIGINT/SIGTERM/SIGPIPE
+static mut G_ORIG_TERMIOS: libc::termios = unsafe { std::mem::zeroed() };
+static mut G_RAW_ACTIVE: bool = false;
+static SIGNALS_INSTALLED: AtomicBool = AtomicBool::new(false);
+
+extern "C" fn signal_handler(sig: libc::c_int) {
+    unsafe {
+        // Async-signal-safe terminal escape sequence flush
+        let esc = b"\x1b[?1049l\x1b[?25h\x1b[0m\n";
+        libc::write(
+            libc::STDOUT_FILENO,
+            esc.as_ptr() as *const libc::c_void,
+            esc.len(),
+        );
+        if G_RAW_ACTIVE {
+            libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &raw const G_ORIG_TERMIOS);
+            G_RAW_ACTIVE = false;
+        }
+        libc::_exit(128 + sig);
+    }
+}
+
+/// Global idempotent terminal restoration function.
+pub fn restore_terminal_state() {
+    unsafe {
+        if G_RAW_ACTIVE {
+            let _ = io::stdout().write_all(b"\x1b[?1049l\x1b[?25h\x1b[0m");
+            let _ = io::stdout().flush();
+            libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &raw const G_ORIG_TERMIOS);
+            G_RAW_ACTIVE = false;
+        }
+    }
+}
+
 /// Manages raw terminal state, alternate screen buffer, and cursor visibility.
 pub struct TerminalManager {
     pub is_tty: bool,
-    orig_termios: Option<libc::termios>,
     fd: i32,
     restored: bool,
-    raw_active: bool,
 }
 
 impl Default for TerminalManager {
@@ -38,45 +71,55 @@ impl TerminalManager {
 
         let fd = if is_tty { libc::STDIN_FILENO } else { -1 };
 
-        let orig_termios = if is_tty {
-            let mut termios = unsafe { std::mem::zeroed::<libc::termios>() };
-            let rc = unsafe { libc::tcgetattr(fd, &mut termios) };
-            if rc == 0 {
-                Some(termios)
-            } else {
-                None
+        if is_tty {
+            unsafe {
+                let mut termios = std::mem::zeroed::<libc::termios>();
+                if libc::tcgetattr(fd, &mut termios) == 0 {
+                    G_ORIG_TERMIOS = termios;
+                }
             }
-        } else {
-            None
-        };
+        }
 
         Self {
             is_tty,
-            orig_termios,
             fd,
             restored: false,
-            raw_active: false,
         }
     }
 
     /// Enter raw/cbreak mode and switch to alternate screen.
     pub fn setup_raw(&mut self) {
-        if !self.is_tty || self.raw_active {
+        if !self.is_tty {
             return;
         }
-        self.raw_active = true;
-        self.restored = false;
 
-        if let Some(ref orig) = self.orig_termios {
-            let mut raw = *orig;
-            // cbreak mode: disable canonical input and echo
+        unsafe {
+            if G_RAW_ACTIVE {
+                return;
+            }
+
+            // Install signal handlers once
+            if !SIGNALS_INSTALLED.swap(true, Ordering::SeqCst) {
+                let mut sa: libc::sigaction = std::mem::zeroed();
+                sa.sa_sigaction = signal_handler as *const () as usize;
+                sa.sa_flags = libc::SA_RESETHAND;
+                libc::sigemptyset(&mut sa.sa_mask);
+
+                libc::sigaction(libc::SIGINT, &sa, std::ptr::null_mut());
+                libc::sigaction(libc::SIGTERM, &sa, std::ptr::null_mut());
+                libc::sigaction(libc::SIGPIPE, &sa, std::ptr::null_mut());
+                libc::sigaction(libc::SIGHUP, &sa, std::ptr::null_mut());
+            }
+
+            let mut raw = G_ORIG_TERMIOS;
             raw.c_lflag &= !(libc::ICANON | libc::ECHO | libc::ISIG);
             raw.c_cc[libc::VMIN] = 0;
             raw.c_cc[libc::VTIME] = 0;
-            unsafe {
-                libc::tcsetattr(self.fd, libc::TCSANOW, &raw);
-            }
+            libc::tcsetattr(self.fd, libc::TCSANOW, &raw);
+            G_RAW_ACTIVE = true;
         }
+
+        self.restored = false;
 
         // Alt screen + hide cursor + clear
         let _ = io::stdout().write_all(b"\x1b[?1049h\x1b[?25l\x1b[H\x1b[2J");
@@ -89,23 +132,10 @@ impl TerminalManager {
             return;
         }
         self.restored = true;
-        self.raw_active = false;
-
-        if self.is_tty {
-            // Leave alt screen + show cursor + reset
-            let _ = io::stdout().write_all(b"\x1b[?1049l\x1b[?25h\x1b[0m");
-            let _ = io::stdout().flush();
-
-            if let Some(ref orig) = self.orig_termios {
-                unsafe {
-                    libc::tcsetattr(self.fd, libc::TCSADRAIN, orig);
-                }
-            }
-        }
+        restore_terminal_state();
     }
 
     /// Wait up to `timeout_ms` milliseconds for key input.
-    /// Returns parsed `Key` events handling escape sequences.
     pub fn get_events(&self, timeout_ms: u64) -> Vec<Key> {
         if !self.is_tty {
             if timeout_ms > 0 {
@@ -122,7 +152,7 @@ impl TerminalManager {
 
         let ret = unsafe { libc::poll(&mut pfd, 1, timeout_ms as i32) };
         if ret > 0 && (pfd.revents & libc::POLLIN) != 0 {
-            let mut buf = [0u8; 64];
+            let mut buf = [0u8; 128];
             let n =
                 unsafe { libc::read(self.fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };
             if n > 0 {
@@ -133,23 +163,9 @@ impl TerminalManager {
 
         Vec::new()
     }
-
-    /// Wait up to `timeout_ms` milliseconds for key input (legacy char helper).
-    pub fn get_keys(&self, timeout_ms: u64) -> Vec<char> {
-        self.get_events(timeout_ms)
-            .into_iter()
-            .filter_map(|k| match k {
-                Key::Char(c) => Some(c),
-                Key::Enter => Some('\n'),
-                Key::Tab => Some('\t'),
-                Key::Esc => Some('\x1b'),
-                _ => None,
-            })
-            .collect()
-    }
 }
 
-/// Parse raw terminal bytes into structured `Key` events.
+/// Parse raw terminal bytes with UTF-8 decoding into structured `Key` events.
 fn parse_key_buffer(buf: &[u8]) -> Vec<Key> {
     let mut keys = Vec::new();
     let mut i = 0;
@@ -188,16 +204,36 @@ fn parse_key_buffer(buf: &[u8]) -> Vec<Key> {
         }
 
         match buf[i] {
-            b'\r' | b'\n' => keys.push(Key::Enter),
-            b'\t' => keys.push(Key::Tab),
-            0x7f | 0x08 => keys.push(Key::Backspace),
-            0x03 => keys.push(Key::Char('\x03')), // Ctrl+C
-            b => {
-                let ch = b as char;
+            b'\r' | b'\n' => {
+                keys.push(Key::Enter);
+                i += 1;
+            }
+            b'\t' => {
+                keys.push(Key::Tab);
+                i += 1;
+            }
+            0x7f | 0x08 => {
+                keys.push(Key::Backspace);
+                i += 1;
+            }
+            0x03 => {
+                keys.push(Key::Char('\x03')); // Ctrl+C
+                i += 1;
+            }
+            _ => {
+                // Multi-byte UTF-8 sequence parsing
+                if let Ok(s) = std::str::from_utf8(&buf[i..]) {
+                    if let Some(ch) = s.chars().next() {
+                        keys.push(Key::Char(ch));
+                        i += ch.len_utf8();
+                        continue;
+                    }
+                }
+                let ch = buf[i] as char;
                 keys.push(Key::Char(ch));
+                i += 1;
             }
         }
-        i += 1;
     }
     keys
 }

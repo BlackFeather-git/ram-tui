@@ -1,6 +1,6 @@
 # Maintainer: Raven <blackfeatheractual@proton.me>
 pkgname=ram-tui
-pkgver=1.0.0.rc1
+pkgver=1.0.0.rc2
 pkgrel=1
 pkgdesc="Blazing-fast, aesthetic, native terminal memory monitor with deep kernel telemetry and zero runtime dependencies"
 arch=('x86_64' 'aarch64')

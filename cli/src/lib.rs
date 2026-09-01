@@ -17,9 +17,9 @@ use ui::themes::{get_palette, next_cycling_mode, next_theme, THEME_NAMES};
 
 pub mod diagnostics;
 
-const VERSION: &str = "1.0.0-rc.1";
+const VERSION: &str = "1.0.0-rc.2";
 
-/// ram-tui v1.0.0-rc.1 — Minimalist real-time terminal memory monitor for Linux
+/// ram-tui v1.0.0-rc.2 — Minimalist real-time terminal memory monitor for Linux
 #[derive(Parser, Debug)]
 #[command(name = "ram", version = VERSION, about)]
 struct Args {
@@ -369,7 +369,7 @@ pub fn run() {
     let mut expanded_groups: HashSet<String> = HashSet::new();
     let mut search_active = false;
     let mut search_query: Option<String> = args.filter.clone();
-    let mut kill_prompt: Option<(u32, String)> = None;
+    let mut kill_prompt: Option<(u32, String, Option<String>)> = None;
     let mut theme_modal_open = false;
     let mut theme_modal_idx: usize = THEME_NAMES
         .iter()
@@ -406,7 +406,7 @@ pub fn run() {
             let (cols, rows) = terminal_size();
             let kill_arg = kill_prompt
                 .as_ref()
-                .map(|(pid, name)| (*pid, name.as_str()));
+                .map(|(pid, name, _)| (*pid, name.as_str()));
             let t_modal = if theme_modal_open {
                 Some(theme_modal_idx)
             } else {
@@ -447,12 +447,34 @@ pub fn run() {
         let mut re_render = false;
 
         for event in events {
-            if let Some((pid, _)) = kill_prompt.take() {
+            if let Some((pid, name, st)) = kill_prompt.take() {
                 if let Key::Char('y' | 'Y') = event {
-                    unsafe {
-                        libc::kill(pid as libc::pid_t, libc::SIGTERM);
+                    #[cfg(target_os = "linux")]
+                    {
+                        if collector_linux::processes::validate_process_identity(
+                            std::path::Path::new("/proc"),
+                            pid,
+                            &name,
+                            st.as_deref(),
+                        ) {
+                            unsafe {
+                                libc::kill(pid as libc::pid_t, libc::SIGTERM);
+                            }
+                            diagnostics::log_debug(&format!(
+                                "Sent SIGTERM to process {name} (PID: {pid})"
+                            ));
+                        } else {
+                            diagnostics::log_debug(&format!(
+                                "Process {name} (PID: {pid}) identity mismatch — kill aborted"
+                            ));
+                        }
                     }
-                    cached_procs = collect_processes_sorted(group_procs, proc_count, sort_metric);
+                    #[cfg(not(target_os = "linux"))]
+                    {
+                        unsafe {
+                            libc::kill(pid as libc::pid_t, libc::SIGTERM);
+                        }
+                    }
                 }
                 re_render = true;
                 continue;
@@ -603,7 +625,14 @@ pub fn run() {
                     if let Some(p) = filtered_procs.get(selected_idx) {
                         let target_pid = p.pid.or_else(|| p.children.first().map(|c| c.pid));
                         if let Some(pid) = target_pid {
-                            kill_prompt = Some((pid, p.name.clone()));
+                            #[cfg(target_os = "linux")]
+                            let st = collector_linux::processes::read_starttime(
+                                std::path::Path::new("/proc"),
+                                &pid.to_string(),
+                            );
+                            #[cfg(not(target_os = "linux"))]
+                            let st = None;
+                            kill_prompt = Some((pid, p.name.clone(), st));
                             re_render = true;
                         }
                     }
@@ -618,12 +647,10 @@ pub fn run() {
                 }
                 Key::Char('1') => {
                     group_procs = true;
-                    cached_procs = collect_processes_sorted(group_procs, proc_count, sort_metric);
                     re_render = true;
                 }
                 Key::Char('2') => {
                     group_procs = false;
-                    cached_procs = collect_processes_sorted(group_procs, proc_count, sort_metric);
                     re_render = true;
                 }
                 Key::Char('o' | 'O') => {
@@ -633,7 +660,16 @@ pub fn run() {
                         SortMetric::Uss => SortMetric::Name,
                         SortMetric::Name => SortMetric::Rss,
                     };
-                    cached_procs = collect_processes_sorted(group_procs, proc_count, sort_metric);
+                    cached_procs.sort_by(|a, b| {
+                        match sort_metric {
+                            SortMetric::Rss => b.rss.cmp(&a.rss),
+                            SortMetric::Pss => b.pss.unwrap_or(b.rss).cmp(&a.pss.unwrap_or(a.rss)),
+                            SortMetric::Uss => b.uss.unwrap_or(b.rss).cmp(&a.uss.unwrap_or(a.rss)),
+                            SortMetric::Name => a.name.cmp(&b.name),
+                        }
+                        .then_with(|| a.name.cmp(&b.name))
+                        .then_with(|| a.pid.unwrap_or(0).cmp(&b.pid.unwrap_or(0)))
+                    });
                     re_render = true;
                 }
                 Key::Char('t') => {
@@ -658,11 +694,6 @@ pub fn run() {
                 }
                 Key::Char('m' | 'M') => {
                     current_mode = next_cycling_mode(&current_mode).to_string();
-                    cached_procs = if current_mode == "hero" {
-                        collect_processes_sorted(group_procs, proc_count, sort_metric)
-                    } else {
-                        Vec::new()
-                    };
                     re_render = true;
                 }
                 Key::Char('h' | 'H' | '?') => {
@@ -678,7 +709,7 @@ pub fn run() {
             let (cols, rows) = terminal_size();
             let kill_arg = kill_prompt
                 .as_ref()
-                .map(|(pid, name)| (*pid, name.as_str()));
+                .map(|(pid, name, _)| (*pid, name.as_str()));
             let t_modal = if theme_modal_open {
                 Some(theme_modal_idx)
             } else {

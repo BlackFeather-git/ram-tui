@@ -53,7 +53,9 @@ fn parse_meminfo_content(content: &str) -> std::collections::HashMap<String, u64
             if let Some(val_str) = parts.first() {
                 if let Ok(val) = val_str.parse::<u64>() {
                     // Values in /proc/meminfo are in kB
-                    map.insert(key, val * 1024);
+                    if let Some(bytes) = val.checked_mul(1024) {
+                        map.insert(key, bytes);
+                    }
                 }
             }
         }

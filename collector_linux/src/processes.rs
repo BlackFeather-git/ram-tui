@@ -61,13 +61,13 @@ pub fn parse_starttime(stat_content: &str) -> Option<String> {
 }
 
 /// Read the comm name for a PID from /proc/<pid>/comm, falling back to cmdline.
-fn read_process_name(proc_dir: &Path, pid: &str) -> Option<String> {
+pub fn read_process_name(proc_dir: &Path, pid: &str) -> Option<String> {
     // Try /proc/<pid>/comm first
     let comm_path = proc_dir.join(pid).join("comm");
     if let Ok(comm) = fs::read_to_string(&comm_path) {
         let comm = comm.trim();
         if !comm.is_empty() {
-            return Some(sanitize_proc_name(comm));
+            return Some(core_render::format::sanitize_text(comm));
         }
     }
 
@@ -82,25 +82,11 @@ fn read_process_name(proc_dir: &Path, pid: &str) -> Option<String> {
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or(first);
-            return Some(sanitize_proc_name(basename));
+            return Some(core_render::format::sanitize_text(basename));
         }
     }
 
     None
-}
-
-/// Simple name sanitiser: replace control chars with '~'.
-fn sanitize_proc_name(name: &str) -> String {
-    name.chars()
-        .map(|ch| {
-            let code = ch as u32;
-            if code < 32 || code == 127 {
-                '~'
-            } else {
-                ch
-            }
-        })
-        .collect()
 }
 
 /// Read RSS from /proc/<pid>/statm (field index 1, in pages).
@@ -116,7 +102,7 @@ fn read_rss_bytes(proc_dir: &Path, pid: &str, pg_size: u64) -> Option<u64> {
         return None;
     }
     let rss_pages: u64 = fields[1].parse().ok()?;
-    let rss_bytes = rss_pages * pg_size;
+    let rss_bytes = rss_pages.checked_mul(pg_size)?;
     if rss_bytes == 0 {
         return None;
     }
@@ -153,9 +139,11 @@ pub fn read_smaps_rollup(proc_dir: &Path, pid: &str) -> Option<(u64, u64)> {
         }
     }
 
-    let pss_bytes = pss_kb.map(|k| k * 1024);
+    let pss_bytes = pss_kb.and_then(|k| k.checked_mul(1024));
     let uss_bytes = if has_priv {
-        Some((priv_clean_kb + priv_dirty_kb) * 1024)
+        priv_clean_kb
+            .checked_add(priv_dirty_kb)
+            .and_then(|t| t.checked_mul(1024))
     } else {
         None
     };
@@ -168,10 +156,37 @@ pub fn read_smaps_rollup(proc_dir: &Path, pid: &str) -> Option<(u64, u64)> {
 }
 
 /// Read starttime from /proc/<pid>/stat.
-fn read_starttime(proc_dir: &Path, pid: &str) -> Option<String> {
+pub fn read_starttime(proc_dir: &Path, pid: &str) -> Option<String> {
     let stat_path = proc_dir.join(pid).join("stat");
     let content = fs::read_to_string(&stat_path).ok()?;
     parse_starttime(content.trim())
+}
+
+/// Validate process identity before signaling to prevent PID reuse races.
+pub fn validate_process_identity(
+    proc_dir: &Path,
+    pid: u32,
+    expected_name: &str,
+    expected_starttime: Option<&str>,
+) -> bool {
+    let pid_str = pid.to_string();
+    if let Some(exp_st) = expected_starttime {
+        if let Some(actual_st) = read_starttime(proc_dir, &pid_str) {
+            if actual_st != exp_st {
+                return false; // Start time differs — PID was reused!
+            }
+        } else {
+            return false; // Process has exited!
+        }
+    }
+    if let Some(actual_name) = read_process_name(proc_dir, &pid_str) {
+        if actual_name != expected_name {
+            return false; // Name mismatch!
+        }
+    } else {
+        return false;
+    }
+    true
 }
 
 /// Collect top-N processes by RSS from /proc.
@@ -222,9 +237,6 @@ pub fn collect_processes_from_dir(
     let mut ungrouped: Vec<ProcessInfo> = Vec::new();
 
     for pid in &pids {
-        // Read starttime for PID-reuse safety
-        let _starttime = read_starttime(proc_dir, pid);
-
         let rss_bytes = match read_rss_bytes(proc_dir, pid, pg_size) {
             Some(r) => r,
             None => continue,
@@ -244,7 +256,7 @@ pub fn collect_processes_from_dir(
                 pid: None,
                 children: Vec::new(),
             });
-            entry.rss += rss_bytes;
+            entry.rss = entry.rss.saturating_add(rss_bytes);
             entry.count += 1;
             entry.children.push(ProcessChild {
                 pid: pid_num,
@@ -276,11 +288,13 @@ pub fn collect_processes_from_dir(
         ungrouped
     };
 
-    // Sort by RSS first to identify top candidate processes
-    procs.sort_by_key(|a| std::cmp::Reverse(a.rss));
+    // When sorting by PSS or USS, sample all candidate processes to guarantee mathematical leader accuracy
+    let candidate_count = if sort_metric == SortMetric::Pss || sort_metric == SortMetric::Uss {
+        procs.len()
+    } else {
+        (limit * 3).max(24).min(procs.len())
+    };
 
-    // Only read smaps_rollup for top candidates to keep procfs scans ultra fast (<0.5ms)
-    let candidate_count = (limit * 3).max(24).min(procs.len());
     for p in &mut procs[..candidate_count] {
         if group_by_name {
             let mut total_pss = 0u64;
@@ -292,8 +306,8 @@ pub fn collect_processes_from_dir(
                 {
                     child.pss = Some(p_bytes);
                     child.uss = Some(u_bytes);
-                    total_pss += p_bytes;
-                    total_uss += u_bytes;
+                    total_pss = total_pss.saturating_add(p_bytes);
+                    total_uss = total_uss.saturating_add(u_bytes);
                     has_smaps = true;
                 }
             }

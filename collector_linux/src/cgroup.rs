@@ -77,8 +77,41 @@ pub fn detect_cgroup_from(
     None
 }
 
-/// Detect cgroup memory limits on the live system.
+/// Parse /proc/self/cgroup to find the process-relative cgroup path.
+pub fn parse_self_cgroup_path(content: &str, is_v2: bool) -> Option<String> {
+    for line in content.lines() {
+        let parts: Vec<&str> = line.splitn(3, ':').collect();
+        if parts.len() == 3 {
+            let is_target = if is_v2 {
+                parts[0] == "0" && parts[1].is_empty()
+            } else {
+                parts[1].split(',').any(|c| c == "memory")
+            };
+            if is_target {
+                let p = parts[2].trim_start_matches('/');
+                if !p.is_empty() {
+                    return Some(p.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Detect cgroup memory limits on the live system, checking nested hierarchy first.
 pub fn detect_cgroup(total_host_ram: u64) -> Option<CgroupInfo> {
+    let self_cgroup = fs::read_to_string("/proc/self/cgroup").unwrap_or_default();
+
+    // Try nested Cgroup v2 path first
+    if let Some(rel_path) = parse_self_cgroup_path(&self_cgroup, true) {
+        let nested_v2 = Path::new("/sys/fs/cgroup").join(&rel_path);
+        let nested_v1 = Path::new("/sys/fs/cgroup/memory").join(&rel_path);
+        if let Some(info) = detect_cgroup_from(&nested_v2, &nested_v1, total_host_ram) {
+            return Some(info);
+        }
+    }
+
+    // Fall back to root controller directories
     detect_cgroup_from(
         Path::new("/sys/fs/cgroup"),
         Path::new("/sys/fs/cgroup/memory"),

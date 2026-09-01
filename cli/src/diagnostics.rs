@@ -1,4 +1,4 @@
-//! System diagnostics, crash reporting, and error logging subsystem.
+//! System diagnostics, crash reporting, and bounded error logging subsystem.
 
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 static DEBUG_ENABLED: AtomicBool = AtomicBool::new(false);
+const MAX_LOG_SIZE: u64 = 512 * 1024; // 512 KB cap
 
 /// Get the persistent cache directory for ram-tui logs (~/.cache/ram-tui).
 pub fn get_log_dir() -> PathBuf {
@@ -16,6 +17,15 @@ pub fn get_log_dir() -> PathBuf {
         PathBuf::from(home).join(".cache").join("ram-tui")
     } else {
         std::env::temp_dir().join("ram-tui")
+    }
+}
+
+fn rotate_if_needed(path: &PathBuf) {
+    if let Ok(meta) = fs::metadata(path) {
+        if meta.len() > MAX_LOG_SIZE {
+            let old_path = path.with_extension("old");
+            let _ = fs::rename(path, old_path);
+        }
     }
 }
 
@@ -31,6 +41,7 @@ pub fn init_diagnostics(debug: bool) {
         let log_dir = get_log_dir();
         let _ = fs::create_dir_all(&log_dir);
         let log_file = log_dir.join("debug.log");
+        rotate_if_needed(&log_file);
         if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(&log_file) {
             let _ = writeln!(
                 f,
@@ -47,19 +58,19 @@ pub fn log_debug(msg: &str) {
     if DEBUG_ENABLED.load(Ordering::Relaxed) {
         let log_dir = get_log_dir();
         let log_file = log_dir.join("debug.log");
+        rotate_if_needed(&log_file);
         if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(log_file) {
             let _ = writeln!(f, "[{}] [DEBUG] {msg}", iso_timestamp());
         }
     }
 }
 
-/// Install panic hook to restore terminal and generate detailed crash dump.
+/// Install panic hook to restore terminal and generate bounded crash dump.
 pub fn install_panic_hook(version: &'static str) {
     let default_hook = panic::take_hook();
     panic::set_hook(Box::new(move |panic_info| {
-        // 1. Idempotently restore terminal screen, raw mode, and cursor
-        let _ = std::io::stdout().write_all(b"\x1b[?1049l\x1b[?25h\x1b[0m\n");
-        let _ = std::io::stdout().flush();
+        // 1. Guaranteed process-wide terminal state restoration (ANSI + termios)
+        ui::terminal::restore_terminal_state();
 
         // 2. Extract panic details
         let payload = if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
@@ -77,15 +88,12 @@ pub fn install_panic_hook(version: &'static str) {
 
         let backtrace = std::backtrace::Backtrace::capture();
 
-        // 3. Inspect system and kernel telemetry accessibility
-        let proc_meminfo_readable = std::fs::read_to_string("/proc/meminfo").is_ok();
-        let proc_dir_readable = std::fs::read_dir("/proc").is_ok();
-
         let log_dir = get_log_dir();
         let _ = fs::create_dir_all(&log_dir);
         let crash_file = log_dir.join("crash.log");
+        rotate_if_needed(&crash_file);
 
-        // 4. Write full crash dump to disk
+        // 3. Write bounded crash dump to disk
         if let Ok(mut f) = OpenOptions::new()
             .create(true)
             .append(true)
@@ -105,12 +113,11 @@ pub fn install_panic_hook(version: &'static str) {
             );
             let _ = writeln!(f, "Location:    {location}");
             let _ = writeln!(f, "Cause:       {payload}");
-            let _ = writeln!(f, "Diagnostics: /proc/meminfo readable: {proc_meminfo_readable}, /proc readable: {proc_dir_readable}");
             let _ = writeln!(f, "Backtrace:\n{backtrace:?}");
             let _ = writeln!(f, "================================================================================\n");
         }
 
-        // 5. Emit clean, informative error message to stderr
+        // 4. Emit clean, informative error message to stderr
         eprintln!(
             "\n┌─────────────────────────────────────────────────────────────────────────────┐"
         );

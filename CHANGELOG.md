@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.0-rc.2] - 2026-09-01
+
+### Correctness, Safety & Cross-Platform Hardening
+`RAM-TUI v1.0.0-rc.2` addresses critical architectural, security, and correctness findings from the deep pre-release systems audit:
+
+* **Async-Signal-Safe Terminal Restoration**: Implemented global `sigaction` signal handlers for `SIGINT`, `SIGTERM`, `SIGPIPE`, and `SIGHUP` guaranteeing 100% restoration of raw mode termios, cursor visibility (`\x1b[?25h`), and alternate screen exit (`\x1b[?1049l`) under all exit paths.
+* **Panic Recovery & Bounded Diagnostics**: Panic hook now calls `ui::terminal::restore_terminal_state()` before logging. Added automatic rotation and 512KB size capping for `debug.log` and `crash.log`.
+* **PID-Reuse Safety Gate**: Process termination (`x`/`K`) now captures process `starttime` from `/proc/<pid>/stat` and revalidates process identity before dispatching `SIGTERM`, preventing signal races if a PID is reused between observation and confirmation.
+* **100% Accurate PSS/USS Leader Ranking**: Fixed candidate sampling bug in `collector_linux::processes` — when sorting by PSS or USS, all candidate processes are sampled to guarantee true mathematical leaderboard accuracy.
+* **Zero Procfs I/O on Interactive Hotkeys**: Grouping toggle (`1`/`2`), sort cycling (`o`), and mode switching (`m`) now operate exclusively on in-memory cached state without triggering synchronous disk I/O.
+* **Centralized Sanitization**: Process names, command lines, and hostnames across Linux, macOS, and Windows backends are strictly sanitized against ANSI escapes, ASCII controls, Unicode BIDI directional overrides, and Trojan code points.
+* **Cross-Platform Backend Telemetry**:
+  * macOS: Removed synthetic commit approximation; returns genuine memory metrics.
+  * Windows: Wired `K32GetPerformanceInfo` for system-wide commit and cache counters.
+* **Nested Cgroup Resolution**: Resolves `/proc/self/cgroup` to accurately detect nested container limits in Kubernetes pods and Docker containers.
+* **Cross-Platform CI Matrix**: Configured GitHub Actions workflow for automated test, clippy, and build verification across Linux, macOS, and Windows.
+* **Automated Zero-Emoji Regression Guard**: Added automated integration test asserting zero Unicode emoji code points across all source code.
+
+---
+
 ## [1.0.0-rc.1] - 2026-09-01
 
 ### Overview

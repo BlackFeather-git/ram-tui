@@ -8,7 +8,12 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: Test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -30,12 +35,12 @@ jobs:
         run: cargo build -p cli --release
 
       - name: JSON Schema Validation
+        shell: bash
         run: |
           cargo run -p cli -- --once --json | python3 -c "
           import json, sys
           d = json.load(sys.stdin)
           assert 'memory' in d
           assert 'top_processes' in d
-          assert d['os'] == 'Linux'
-          print('JSON schema OK')
+          print('JSON schema validation successful on ${{ matrix.os }}')
           "

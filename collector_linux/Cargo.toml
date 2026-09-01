@@ -8,6 +8,7 @@ description = "Linux /proc memory and process collectors for ram-tui"
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 libc = "0.2"
+core_render = { path = "../core_render" }
 
 [dev-dependencies]
 tempfile = "3"
