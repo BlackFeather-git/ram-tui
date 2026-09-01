@@ -1,9 +1,47 @@
 //! Native macOS Darwin telemetry backend using Mach kernel APIs and sysctl.
 
-use crate::cgroup::CgroupInfo;
 use crate::meminfo::MemInfo;
 use crate::processes::{ProcessChild, ProcessInfo, SortMetric};
 use std::collections::HashMap;
+
+extern "C" {
+    fn mach_host_self() -> libc::mach_port_t;
+    fn proc_listpids(type_: u32, typeinfo: u32, buffer: *mut libc::c_void, buffersize: i32) -> i32;
+    fn proc_pidinfo(
+        pid: i32,
+        flavor: i32,
+        arg: u64,
+        buffer: *mut libc::c_void,
+        buffersize: i32,
+    ) -> i32;
+    fn proc_name(pid: i32, buffer: *mut libc::c_void, buffersize: u32) -> i32;
+}
+
+const PROC_ALL_PIDS: u32 = 1;
+const PROC_PIDTASKINFO: i32 = 4;
+
+#[repr(C)]
+#[derive(Default)]
+struct ProcTaskInfo {
+    pub pti_virtual_size: u64,
+    pub pti_resident_size: u64,
+    pub pti_total_user: u64,
+    pub pti_total_system: u64,
+    pub pti_threads_user: u64,
+    pub pti_threads_system: u64,
+    pub pti_policy: i32,
+    pub pti_faults: i32,
+    pub pti_pageins: i32,
+    pub pti_cow_faults: i32,
+    pub pti_messages_sent: i32,
+    pub pti_messages_received: i32,
+    pub pti_syscalls_mach: i32,
+    pub pti_syscalls_unix: i32,
+    pub pti_csw: i32,
+    pub pti_threadnum: i32,
+    pub pti_numrunning: i32,
+    pub pti_priority: i32,
+}
 
 #[cfg(target_os = "macos")]
 pub fn collect_meminfo() -> MemInfo {
@@ -21,8 +59,13 @@ pub fn collect_meminfo() -> MemInfo {
         );
     }
 
-    // Mach host statistics for VM paging
-    let mut page_size: libc::vm_size_t = 4096;
+    let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
+    let ps = if page_size > 0 {
+        page_size as u64
+    } else {
+        4096
+    };
+
     let mut free: u64 = 0;
     let mut active: u64 = 0;
     let mut inactive: u64 = 0;
@@ -31,9 +74,7 @@ pub fn collect_meminfo() -> MemInfo {
     let mut compressed: u64 = 0;
 
     unsafe {
-        let host_port = libc::mach_host_self();
-        libc::_host_page_size(host_port, &mut page_size);
-
+        let host_port = mach_host_self();
         let mut vm_stat: libc::vm_statistics64 = std::mem::zeroed();
         let mut count = (std::mem::size_of::<libc::vm_statistics64>()
             / std::mem::size_of::<libc::integer_t>())
@@ -45,7 +86,6 @@ pub fn collect_meminfo() -> MemInfo {
             &mut count,
         );
         if ret == libc::KERN_SUCCESS {
-            let ps = page_size as u64;
             free = vm_stat.free_count as u64 * ps;
             active = vm_stat.active_count as u64 * ps;
             inactive = vm_stat.inactive_count as u64 * ps;
@@ -116,11 +156,10 @@ pub fn collect_processes_sorted(
     limit: usize,
     sort_metric: SortMetric,
 ) -> Vec<ProcessInfo> {
-    // macOS Darwin proc_listpids implementation
     let mut pids = vec![0i32; 2048];
     let num_bytes = unsafe {
-        libc::proc_listpids(
-            libc::PROC_ALL_PIDS,
+        proc_listpids(
+            PROC_ALL_PIDS,
             0,
             pids.as_mut_ptr() as *mut libc::c_void,
             (pids.len() * std::mem::size_of::<i32>()) as i32,
@@ -142,14 +181,14 @@ pub fn collect_processes_sorted(
             continue;
         }
 
-        let mut task_info: libc::proc_taskinfo = unsafe { std::mem::zeroed() };
+        let mut task_info: ProcTaskInfo = unsafe { std::mem::zeroed() };
         let ret = unsafe {
-            libc::proc_pidinfo(
+            proc_pidinfo(
                 pid,
-                libc::PROC_PIDTASKINFO,
+                PROC_PIDTASKINFO,
                 0,
                 &mut task_info as *mut _ as *mut libc::c_void,
-                std::mem::size_of::<libc::proc_taskinfo>() as i32,
+                std::mem::size_of::<ProcTaskInfo>() as i32,
             )
         };
 
@@ -164,7 +203,7 @@ pub fn collect_processes_sorted(
 
         let mut name_buf = [0u8; 256];
         let name_ret = unsafe {
-            libc::proc_name(
+            proc_name(
                 pid,
                 name_buf.as_mut_ptr() as *mut libc::c_void,
                 name_buf.len() as u32,
