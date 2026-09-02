@@ -15,6 +15,15 @@ Write-Host "==> Welcome to RAM-TUI v1.0.1!" -ForegroundColor Cyan
 Write-Host "==> Notice: RAM-TUI has officially transitioned from Python to a native Rust binary." -ForegroundColor Yellow
 Write-Host "==> Installing ram-tui for Windows to $InstallDir..." -ForegroundColor Cyan
 
+# Clean up legacy Python v0.x scripts and shims if present
+$LegacyFiles = @("ram.py", "ram.cmd", "ram.ps1", "ram-tui.py", "ram-tui.cmd", "ram-tui.ps1")
+foreach ($file in $LegacyFiles) {
+    $target = Join-Path $InstallDir $file
+    if (Test-Path $target) {
+        Remove-Item -Force $target -ErrorAction SilentlyContinue
+    }
+}
+
 if (Get-Command cargo -ErrorAction SilentlyContinue) {
     Write-Host "Building native binary via Cargo..." -ForegroundColor Green
     cargo build --release -p cli
@@ -38,11 +47,16 @@ if (Get-Command cargo -ErrorAction SilentlyContinue) {
     }
 }
 
+$RamTuiPath = Join-Path $InstallDir "ram-tui.exe"
+Copy-Item $RamPath -Destination $RamTuiPath -Force
+
 $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
 if ($UserPath -notlike "*$InstallDir*") {
     Write-Host "Notice: Adding $InstallDir to your User PATH..." -ForegroundColor Yellow
-    [Environment]::SetEnvironmentVariable("Path", "$UserPath;$InstallDir", "User")
-    $env:Path = "$env:Path;$InstallDir"
+    [Environment]::SetEnvironmentVariable("Path", "$InstallDir;$UserPath", "User")
+}
+if ($env:Path -notlike "*$InstallDir*") {
+    $env:Path = "$InstallDir;$env:Path"
 }
 
 Write-Host "Installation complete. Run 'ram' in PowerShell or Windows Terminal to launch." -ForegroundColor Green
