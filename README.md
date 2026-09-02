@@ -13,7 +13,7 @@
 <br />
 
 [![CI](https://github.com/BlackFeather-git/ram-tui/actions/workflows/ci.yml/badge.svg?branch=test)](https://github.com/BlackFeather-git/ram-tui/actions)
-[![Latest Release](https://img.shields.io/badge/release-v1.0.0-brightgreen.svg)](https://github.com/BlackFeather-git/ram-tui/releases)
+[![Latest Release](https://img.shields.io/badge/release-v1.0.1-brightgreen.svg)](https://github.com/BlackFeather-git/ram-tui/releases)
 [![Rust 1.70+](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-brightgreen.svg)]()
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)

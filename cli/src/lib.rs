@@ -38,9 +38,9 @@ extern "system" {
     fn CloseHandle(hObject: *mut std::ffi::c_void) -> i32;
 }
 
-const VERSION: &str = "1.0.0";
+const VERSION: &str = "1.0.1";
 
-/// ram-tui v1.0.0 — Fast, aesthetic, native terminal memory monitor
+/// ram-tui v1.0.1 — Fast, aesthetic, native terminal memory monitor
 #[derive(Parser, Debug)]
 #[command(name = "ram", version = VERSION, about)]
 struct Args {
