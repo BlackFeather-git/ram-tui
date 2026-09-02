@@ -38,9 +38,20 @@ extern "system" {
     fn CloseHandle(hObject: *mut std::ffi::c_void) -> i32;
 }
 
-const VERSION: &str = "1.0.1";
+const VERSION: &str = "1.0.2";
 
-/// ram-tui v1.0.1 — Fast, aesthetic, native terminal memory monitor
+fn parse_count(s: &str) -> Result<usize, String> {
+    let val = s
+        .parse::<usize>()
+        .map_err(|e| format!("invalid number: {e}"))?;
+    if (1..=10000).contains(&val) {
+        Ok(val)
+    } else {
+        Err(format!("{val} is not in 1..=10000"))
+    }
+}
+
+/// ram-tui v1.0.2 — Fast, aesthetic, native terminal memory monitor
 #[derive(Parser, Debug)]
 #[command(name = "ram", version = VERSION, about)]
 struct Args {
@@ -49,7 +60,7 @@ struct Args {
     rate: u64,
 
     /// Number of top processes (1–10000, default: 8)
-    #[arg(short = 'n', long = "count", default_value_t = 8)]
+    #[arg(short = 'n', long = "count", default_value_t = 8, value_parser = parse_count)]
     count: usize,
 
     /// Output one snapshot and exit

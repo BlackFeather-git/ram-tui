@@ -122,7 +122,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | `Up` / `Down`, `k` / `j` | Navigate and select process rows |
 | `Enter`, `e`, `Tab` | Expand or collapse selected process group tree |
 | `/` | Open live search filter bar |
-| `K` | Open safe `SIGTERM` process kill prompt for selected PID |
+| `x`, `X`, `K` | Open safe `SIGTERM` process kill prompt for selected PID |
 | `+`, `=` | Increase sampling frequency (decrease refresh interval) |
 | `-`, `_` | Decrease sampling frequency (increase refresh interval) |
 | `h`, `H`, `?` | Toggle help overlay |

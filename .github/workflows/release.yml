@@ -53,6 +53,12 @@ jobs:
         run: |
           cp target/${{ matrix.target }}/release/ram-tui target/${{ matrix.target }}/release/${{ matrix.asset_name }}
           chmod +x target/${{ matrix.target }}/release/${{ matrix.asset_name }}
+          cd target/${{ matrix.target }}/release
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum ${{ matrix.asset_name }} > ${{ matrix.asset_name }}.sha256
+          else
+            shasum -a 256 ${{ matrix.asset_name }} > ${{ matrix.asset_name }}.sha256
+          fi
 
       - name: Prepare Assets (Windows)
         if: runner.os == 'Windows'
@@ -60,6 +66,12 @@ jobs:
         run: |
           cp target/${{ matrix.target }}/release/ram.exe target/${{ matrix.target }}/release/${{ matrix.asset_name }}
           cp target/${{ matrix.target }}/release/ram.exe target/${{ matrix.target }}/release/ram-tui-windows-x86_64.exe
+          cd target/${{ matrix.target }}/release
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum ${{ matrix.asset_name }} > ${{ matrix.asset_name }}.sha256
+          else
+            shasum -a 256 ${{ matrix.asset_name }} > ${{ matrix.asset_name }}.sha256
+          fi
 
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v2
@@ -67,5 +79,6 @@ jobs:
         with:
           files: |
             target/${{ matrix.target }}/release/${{ matrix.asset_name }}
+            target/${{ matrix.target }}/release/${{ matrix.asset_name }}.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

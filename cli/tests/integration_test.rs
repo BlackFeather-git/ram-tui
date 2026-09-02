@@ -166,3 +166,29 @@ fn test_zero_emoji_invariant() {
         }
     }
 }
+
+#[test]
+fn test_count_range_enforcement() {
+    let out_zero = Command::new("cargo")
+        .args(["run", "-p", "cli", "--", "--once", "-n", "0"])
+        .current_dir(env!("CARGO_MANIFEST_DIR").to_string() + "/..")
+        .output()
+        .expect("failed to run cli");
+    assert!(!out_zero.status.success(), "cli should reject -n 0");
+    let err = String::from_utf8_lossy(&out_zero.stderr);
+    assert!(err.contains("not in 1..=10000") || err.contains("error:"));
+
+    let out_huge = Command::new("cargo")
+        .args(["run", "-p", "cli", "--", "--once", "-n", "10001"])
+        .current_dir(env!("CARGO_MANIFEST_DIR").to_string() + "/..")
+        .output()
+        .expect("failed to run cli");
+    assert!(!out_huge.status.success(), "cli should reject -n 10001");
+
+    let out_valid = Command::new("cargo")
+        .args(["run", "-p", "cli", "--", "--once", "-n", "5"])
+        .current_dir(env!("CARGO_MANIFEST_DIR").to_string() + "/..")
+        .output()
+        .expect("failed to run cli");
+    assert!(out_valid.status.success(), "cli should accept -n 5");
+}

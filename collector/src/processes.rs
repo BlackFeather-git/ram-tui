@@ -361,6 +361,14 @@ pub fn collect_processes_from_dir(
         ungrouped
     };
 
+    // Pre-sort by RSS so candidate sampling for PSS/USS enrichment selects the actual top memory consumers
+    procs.sort_by(|a, b| {
+        b.rss
+            .cmp(&a.rss)
+            .then_with(|| a.name.cmp(&b.name))
+            .then_with(|| a.pid.unwrap_or(0).cmp(&b.pid.unwrap_or(0)))
+    });
+
     // When sorting by PSS or USS, sample all candidate processes to guarantee mathematical leader accuracy
     let candidate_count = if sort_metric == SortMetric::Pss || sort_metric == SortMetric::Uss {
         procs.len()
@@ -661,5 +669,50 @@ mod tests {
             None,
         );
         assert!(!is_valid, "identity should fail when name does not match");
+    }
+
+    #[test]
+    fn test_rss_presort_candidate_enrichment() {
+        let temp = TempDir::new().unwrap();
+        let proc = temp.path();
+
+        // Create 30 processes where the highest RSS process is PID 30
+        for i in 1..=30 {
+            let pid_dir = proc.join(i.to_string());
+            fs::create_dir_all(&pid_dir).unwrap();
+            fs::write(pid_dir.join("comm"), format!("proc_{i}\n")).unwrap();
+            // Assign increasing resident page count
+            fs::write(pid_dir.join("statm"), format!("1000 {i} 10 0 0 0 0\n")).unwrap();
+            fs::write(
+                pid_dir.join("smaps_rollup"),
+                format!(
+                    "00400000-00452000 r-xp 00000000 08:02 123 /test\n\
+                     Rss:                {} kB\n\
+                     Pss:                {} kB\n\
+                     Pss_Dirty:          0 kB\n\
+                     Pss_Anon:           0 kB\n\
+                     Pss_File:           0 kB\n\
+                     Pss_Shmem:          0 kB\n\
+                     Shared_Clean:       0 kB\n\
+                     Shared_Dirty:       0 kB\n\
+                     Private_Clean:      0 kB\n\
+                     Private_Dirty:      {} kB\n",
+                    i * 4,
+                    i * 4,
+                    i * 4
+                ),
+            )
+            .unwrap();
+        }
+
+        let procs = collect_processes_from_dir(proc, true, 5, SortMetric::Rss);
+        assert_eq!(procs.len(), 5);
+        // The highest RSS process (proc_30) must be first and MUST have PSS populated
+        assert_eq!(procs[0].name, "proc_30");
+        assert!(
+            procs[0].pss.is_some(),
+            "Top RSS process must have PSS enriched"
+        );
+        assert_eq!(procs[0].pss, Some(30 * 4 * 1024));
     }
 }
