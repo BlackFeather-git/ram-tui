@@ -101,11 +101,8 @@ fn read_rss_bytes(proc_dir: &Path, pid: &str, pg_size: u64) -> Option<u64> {
     if content.is_empty() {
         return None;
     }
-    let fields: Vec<&str> = content.split_whitespace().collect();
-    if fields.len() < 2 {
-        return None;
-    }
-    let rss_pages: u64 = fields[1].parse().ok()?;
+    // statm fields are: size resident shared text lib data dt — we only need field[1] (resident pages).
+    let rss_pages: u64 = content.split_whitespace().nth(1)?.parse().ok()?;
     let rss_bytes = rss_pages.checked_mul(pg_size)?;
     if rss_bytes == 0 {
         return None;
@@ -320,7 +317,7 @@ pub fn collect_processes_from_dir(
         let pid_num: u32 = pid.parse().unwrap_or(0);
 
         if group_by_name {
-            let entry = grouped.entry(comm.clone()).or_insert(ProcessInfo {
+            let entry = grouped.entry(comm.clone()).or_insert_with(|| ProcessInfo {
                 name: comm.clone(),
                 rss: 0,
                 pss: None,
