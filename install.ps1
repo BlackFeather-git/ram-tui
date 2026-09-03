@@ -11,7 +11,7 @@ if (!(Test-Path $InstallDir)) {
 
 $RamPath = Join-Path $InstallDir "ram.exe"
 
-Write-Host "==> Welcome to RAM-TUI v1.0.2!" -ForegroundColor Cyan
+Write-Host "==> Welcome to RAM-TUI v1.0.3!" -ForegroundColor Cyan
 Write-Host "==> Notice: RAM-TUI has officially transitioned from Python to a native Rust binary." -ForegroundColor Yellow
 Write-Host "==> Installing ram-tui for Windows to $InstallDir..." -ForegroundColor Cyan
 
@@ -41,23 +41,26 @@ if (Get-Command cargo -ErrorAction SilentlyContinue) {
             throw "Downloaded binary is invalid or incomplete (size: $fileSize bytes)."
         }
 
-        # Cryptographic SHA-256 integrity verification
-        try {
-            $ShaFile = Join-Path $InstallDir "ram.sha256"
-            Invoke-WebRequest -Uri $ShaUri -OutFile $ShaFile -UseBasicParsing
-            $ExpectedHash = (Get-Content $ShaFile).Trim().Split()[0].ToUpper()
-            Remove-Item -Force $ShaFile -ErrorAction SilentlyContinue
-            $ActualHash = (Get-FileHash -Path $RamPath -Algorithm SHA256).Hash.ToUpper()
-            if ($ActualHash -ne $ExpectedHash) {
-                Remove-Item -Force $RamPath -ErrorAction SilentlyContinue
-                throw "Cryptographic SHA-256 checksum mismatch (Expected: $ExpectedHash, Got: $ActualHash)."
-            }
-            Write-Host "==> Cryptographic integrity verified: SHA-256 ($($ActualHash.Substring(0, 16))...)" -ForegroundColor Green
-        } catch {
-            Write-Host "Notice: Checksum verification bypassed or unavailable: $_" -ForegroundColor Yellow
+        # Cryptographic SHA-256 integrity verification (fail-closed)
+        Write-Host "==> Verifying cryptographic SHA-256 checksum..." -ForegroundColor Cyan
+        $ShaFile = Join-Path $InstallDir "ram.sha256"
+        Invoke-WebRequest -Uri $ShaUri -OutFile $ShaFile -UseBasicParsing
+        $ExpectedHash = (Get-Content $ShaFile).Trim().Split()[0].ToUpper()
+        Remove-Item -Force $ShaFile -ErrorAction SilentlyContinue
+
+        if ($ExpectedHash.Length -ne 64) {
+            Remove-Item -Force $RamPath -ErrorAction SilentlyContinue
+            throw "Cryptographic SHA-256 checksum asset is invalid or malformed."
         }
 
-        Write-Host "Downloaded 'ram.exe' to $InstallDir" -ForegroundColor Green
+        $ActualHash = (Get-FileHash -Path $RamPath -Algorithm SHA256).Hash.ToUpper()
+        if ($ActualHash -ne $ExpectedHash) {
+            Remove-Item -Force $RamPath -ErrorAction SilentlyContinue
+            throw "Cryptographic SHA-256 checksum mismatch (Expected: $ExpectedHash, Got: $ActualHash)."
+        }
+        Write-Host "==> Cryptographic integrity verified: SHA-256 ($($ActualHash.Substring(0, 16))...)" -ForegroundColor Green
+
+        Write-Host "Downloaded and verified 'ram.exe' to $InstallDir" -ForegroundColor Green
     } catch {
         Write-Host "Error: Failed to download precompiled release binary: $_" -ForegroundColor Red
         Write-Host "Please download ram-windows-x86_64.exe directly from https://github.com/BlackFeather-git/ram-tui/releases/latest" -ForegroundColor Yellow

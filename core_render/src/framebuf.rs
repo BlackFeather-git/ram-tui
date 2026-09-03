@@ -39,7 +39,8 @@ impl FrameBuffer {
         out.write_all(buf.as_bytes())?;
         out.flush()?;
 
-        self.prev = lines.to_vec();
+        self.prev.clear();
+        self.prev.extend_from_slice(lines);
         Ok(())
     }
 

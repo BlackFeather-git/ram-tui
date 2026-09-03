@@ -88,6 +88,27 @@ pub fn os_display_name() -> &'static str {
     }
 }
 
+/// Return the sanitized system hostname.
+pub fn get_hostname() -> String {
+    if let Ok(h) = std::env::var("HOSTNAME") {
+        return sanitize_text(&h);
+    }
+    if let Ok(h) = std::env::var("COMPUTERNAME") {
+        return sanitize_text(&h);
+    }
+    #[cfg(unix)]
+    {
+        let mut buf = [0u8; 256];
+        let ret = unsafe { libc::gethostname(buf.as_mut_ptr() as *mut libc::c_char, buf.len()) };
+        if ret == 0 {
+            let len = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
+            let raw = String::from_utf8_lossy(&buf[..len]);
+            return sanitize_text(&raw);
+        }
+    }
+    "unknown".into()
+}
+
 /// Convert Unix epoch seconds into civil date-time (Year, Month, Day, Hour, Min, Sec) in pure Rust.
 /// Uses Howard Hinnant's integer algorithm (Euclidean affine calendar).
 pub fn epoch_to_civil(secs: u64) -> (u32, u32, u32, u32, u32, u32) {
@@ -265,5 +286,20 @@ mod tests {
 
         // Next day 2027-01-01 00:00:00 UTC = 1798761600
         assert_eq!(epoch_to_civil(1798761600), (2027, 1, 1, 0, 0, 0));
+    }
+
+    #[test]
+    fn test_get_hostname_sanitized() {
+        let host = get_hostname();
+        assert!(!host.is_empty());
+        // Verify no ANSI escapes or raw control bytes exist
+        assert_eq!(crate::ansi::strip_ansi(&host), host);
+        for ch in host.chars() {
+            let code = ch as u32;
+            assert!(
+                code >= 32 && code != 127,
+                "hostname contains raw control char: {code}"
+            );
+        }
     }
 }

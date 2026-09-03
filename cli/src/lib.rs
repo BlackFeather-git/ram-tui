@@ -18,7 +18,7 @@ use serde::Serialize;
 use collector::{
     collect_meminfo, collect_processes_sorted, CgroupInfo, MemInfo, ProcessInfo, SortMetric,
 };
-use core_render::format::sanitize_text;
+use core_render::format::{get_hostname, sanitize_text};
 use core_render::framebuf::FrameBuffer;
 use core_render::meter::GraphSymbol;
 use ui::layout::render_snapshot;
@@ -38,7 +38,7 @@ extern "system" {
     fn CloseHandle(hObject: *mut std::ffi::c_void) -> i32;
 }
 
-const VERSION: &str = "1.0.2";
+const VERSION: &str = "1.0.3";
 
 fn parse_count(s: &str) -> Result<usize, String> {
     let val = s
@@ -51,7 +51,7 @@ fn parse_count(s: &str) -> Result<usize, String> {
     }
 }
 
-/// ram-tui v1.0.2 — Fast, aesthetic, native terminal memory monitor
+/// ram-tui v1.0.3 — Fast, aesthetic, native terminal memory monitor
 #[derive(Parser, Debug)]
 #[command(name = "ram", version = VERSION, about)]
 struct Args {
@@ -219,26 +219,6 @@ fn iso_timestamp() -> String {
     core_render::format::iso_timestamp()
 }
 
-fn get_hostname() -> String {
-    if let Ok(h) = std::env::var("HOSTNAME") {
-        return sanitize_text(&h);
-    }
-    if let Ok(h) = std::env::var("COMPUTERNAME") {
-        return sanitize_text(&h);
-    }
-    #[cfg(unix)]
-    {
-        let mut buf = [0u8; 256];
-        let ret = unsafe { libc::gethostname(buf.as_mut_ptr() as *mut libc::c_char, buf.len()) };
-        if ret == 0 {
-            let len = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
-            let raw = String::from_utf8_lossy(&buf[..len]);
-            return sanitize_text(&raw);
-        }
-    }
-    "unknown".into()
-}
-
 struct KillTarget {
     pid: u32,
     name: String,
@@ -361,6 +341,10 @@ pub fn run() {
             0.0
         };
         let history = vec![initial_ratio; 60];
+        let initial_filter: Option<String> = args
+            .filter
+            .as_ref()
+            .map(|f| f.chars().filter(|c| (' '..='~').contains(c)).collect());
         let output = render_snapshot(
             &mem,
             &procs,
@@ -381,7 +365,7 @@ pub fn run() {
             args.spark,
             None,
             &empty_set,
-            args.filter.as_deref(),
+            initial_filter.as_deref(),
             false,
             None,
             None,
@@ -392,6 +376,10 @@ pub fn run() {
     }
 
     // Interactive TUI mode
+    let initial_filter: Option<String> = args
+        .filter
+        .as_ref()
+        .map(|f| f.chars().filter(|c| (' '..='~').contains(c)).collect());
     let mut refresh_ms = args.rate;
     let proc_count = args.count;
     let mut group_procs = !args.no_group;
@@ -418,7 +406,7 @@ pub fn run() {
     let mut selected_idx: usize = 0;
     let mut expanded_groups: HashSet<String> = HashSet::new();
     let mut search_active = false;
-    let mut search_query: Option<String> = args.filter.clone();
+    let mut search_query: Option<String> = initial_filter;
     let mut kill_prompt: Option<KillTarget> = None;
     let mut theme_modal_open = false;
     let mut theme_modal_idx: usize = THEME_NAMES
@@ -426,9 +414,66 @@ pub fn run() {
         .position(|&t| t == current_theme)
         .unwrap_or(0);
 
+    let mut cached_pal = get_palette(&current_theme, color_enabled);
+    let mut cached_theme = current_theme.clone();
+    let mut cached_color = color_enabled;
+    let (mut last_cols, mut last_rows) = terminal_size();
+
     term.setup_raw();
 
     loop {
+        macro_rules! render_current_frame {
+            () => {{
+                let (cols, rows) = terminal_size();
+                if cols != last_cols || rows != last_rows {
+                    last_cols = cols;
+                    last_rows = rows;
+                    fb.invalidate();
+                }
+                if current_theme != cached_theme || color_enabled != cached_color {
+                    cached_pal = get_palette(&current_theme, color_enabled);
+                    cached_theme = current_theme.clone();
+                    cached_color = color_enabled;
+                    fb.invalidate();
+                }
+                let kill_arg = kill_prompt.as_ref().map(|t| (t.pid, t.name.as_str()));
+                let t_modal = if theme_modal_open {
+                    Some(theme_modal_idx)
+                } else {
+                    None
+                };
+                let output = render_snapshot(
+                    &cached_mem,
+                    &cached_procs,
+                    group_procs,
+                    paused,
+                    &current_mode,
+                    &current_theme,
+                    &cached_pal,
+                    current_symbol,
+                    color_enabled,
+                    show_help,
+                    None,
+                    true,
+                    cols,
+                    rows,
+                    sort_metric,
+                    &history,
+                    show_sparkline,
+                    Some(selected_idx),
+                    &expanded_groups,
+                    search_query.as_deref(),
+                    search_active,
+                    kill_arg,
+                    t_modal,
+                );
+                let lines: Vec<String> = output.lines().map(|l| l.to_string()).collect();
+                if fb.render(&lines, &mut io::stdout()).is_err() {
+                    break;
+                }
+            }};
+        }
+
         if !paused {
             cached_mem = collect_meminfo();
             cached_procs = if current_mode == "hero" {
@@ -452,43 +497,7 @@ pub fn run() {
                 *last = ratio;
             }
 
-            let pal = get_palette(&current_theme, color_enabled);
-            let (cols, rows) = terminal_size();
-            let kill_arg = kill_prompt.as_ref().map(|t| (t.pid, t.name.as_str()));
-            let t_modal = if theme_modal_open {
-                Some(theme_modal_idx)
-            } else {
-                None
-            };
-            let output = render_snapshot(
-                &cached_mem,
-                &cached_procs,
-                group_procs,
-                paused,
-                &current_mode,
-                &current_theme,
-                &pal,
-                current_symbol,
-                color_enabled,
-                show_help,
-                None,
-                true,
-                cols,
-                rows,
-                sort_metric,
-                &history,
-                show_sparkline,
-                Some(selected_idx),
-                &expanded_groups,
-                search_query.as_deref(),
-                search_active,
-                kill_arg,
-                t_modal,
-            );
-            let lines: Vec<String> = output.lines().map(|l| l.to_string()).collect();
-            if fb.render(&lines, &mut io::stdout()).is_err() {
-                break;
-            }
+            render_current_frame!();
         }
 
         let events = term.get_events(refresh_ms);
@@ -818,6 +827,7 @@ pub fn run() {
                 }
                 Key::Char('m' | 'M') => {
                     current_mode = next_cycling_mode(&current_mode).to_string();
+                    fb.invalidate();
                     re_render = true;
                 }
                 Key::Char('h' | 'H' | '?') => {
@@ -829,43 +839,7 @@ pub fn run() {
         }
 
         if re_render {
-            let pal = get_palette(&current_theme, color_enabled);
-            let (cols, rows) = terminal_size();
-            let kill_arg = kill_prompt.as_ref().map(|t| (t.pid, t.name.as_str()));
-            let t_modal = if theme_modal_open {
-                Some(theme_modal_idx)
-            } else {
-                None
-            };
-            let output = render_snapshot(
-                &cached_mem,
-                &cached_procs,
-                group_procs,
-                paused,
-                &current_mode,
-                &current_theme,
-                &pal,
-                current_symbol,
-                color_enabled,
-                show_help,
-                None,
-                true,
-                cols,
-                rows,
-                sort_metric,
-                &history,
-                show_sparkline,
-                Some(selected_idx),
-                &expanded_groups,
-                search_query.as_deref(),
-                search_active,
-                kill_arg,
-                t_modal,
-            );
-            let lines: Vec<String> = output.lines().map(|l| l.to_string()).collect();
-            if fb.render(&lines, &mut io::stdout()).is_err() {
-                break;
-            }
+            render_current_frame!();
         }
     }
 

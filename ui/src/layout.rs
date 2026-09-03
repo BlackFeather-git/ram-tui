@@ -56,6 +56,7 @@ pub fn render_standalone_theme_window(
         ui_cols,
     ));
 
+    let inner_w: usize = 38;
     for (i, name) in THEME_NAMES.iter().enumerate() {
         let is_sel = i == theme_idx;
         let prefix = if is_sel {
@@ -66,12 +67,15 @@ pub fn render_standalone_theme_window(
         let theme_pal = get_palette(name, enable_color);
         let dot = format!("{}●{}", theme_pal.accent, r);
         let name_styled = if is_sel {
-            format!("{bold}{a}{:<16}{r}", name)
+            format!("{bold}{a}{name}{r}")
         } else {
-            format!("{t}{:<16}{r}", name)
+            format!("{t}{name}{r}")
         };
+        let content = format!("  {prefix}{dot} {name_styled}");
+        let pad_len = inner_w.saturating_sub(visible_cell_width(&content));
+        let trailing_pad = " ".repeat(pad_len);
         lines.push(clamp_line_to_cols(
-            &format!("{pad_box}{a}│{r}  {prefix}{dot} {name_styled}        {a}│{r}"),
+            &format!("{pad_box}{a}│{r}{content}{trailing_pad}{a}│{r}"),
             ui_cols,
         ));
     }
@@ -84,8 +88,16 @@ pub fn render_standalone_theme_window(
         &format!("{pad_box}{a}├──────────────────────────────────────┤{r}"),
         ui_cols,
     ));
+    let footer_text = format!("{dim}↑/↓ navigate  Enter apply  Esc cancel{r}");
+    let footer_pad = inner_w.saturating_sub(visible_cell_width(&footer_text));
+    let pad_left_f = footer_pad / 2;
+    let pad_right_f = footer_pad - pad_left_f;
     lines.push(clamp_line_to_cols(
-        &format!("{pad_box}{a}│{r} {dim}↑/↓ navigate  Enter apply  Esc cancel{r} {a}│{r}"),
+        &format!(
+            "{pad_box}{a}│{r}{}{footer_text}{}{a}│{r}",
+            " ".repeat(pad_left_f),
+            " ".repeat(pad_right_f)
+        ),
         ui_cols,
     ));
     lines.push(clamp_line_to_cols(
@@ -716,27 +728,41 @@ pub fn render_snapshot(
     clamped.join("\n")
 }
 
-/// Get the system hostname.
+/// Get the sanitized system hostname.
 fn hostname() -> String {
-    if let Ok(h) = std::env::var("HOSTNAME") {
-        return h;
-    }
-    if let Ok(h) = std::env::var("COMPUTERNAME") {
-        return h;
-    }
-    #[cfg(unix)]
-    {
-        let mut buf = [0u8; 256];
-        let ret = unsafe { libc::gethostname(buf.as_mut_ptr() as *mut libc::c_char, buf.len()) };
-        if ret == 0 {
-            let len = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
-            return String::from_utf8_lossy(&buf[..len]).to_string();
-        }
-    }
-    "unknown".to_string()
+    core_render::format::get_hostname()
 }
 
 /// Get current local time as HH:MM:SS.
 fn local_now() -> String {
     core_render::format::local_now_hms()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use core_render::cellwidth::visible_cell_width;
+
+    #[test]
+    fn test_theme_modal_box_alignment() {
+        let pal = get_palette("default", true);
+        for idx in 0..THEME_NAMES.len() {
+            let rendered = render_standalone_theme_window(idx, &pal, 80, 24, true, false);
+            let box_lines: Vec<&str> = rendered
+                .lines()
+                .filter(|l| {
+                    l.contains('│') || l.contains('┌') || l.contains('└') || l.contains('├')
+                })
+                .collect();
+            assert!(!box_lines.is_empty());
+            let expected_width = visible_cell_width(box_lines[0]);
+            for (line_no, line) in box_lines.iter().enumerate() {
+                assert_eq!(
+                    visible_cell_width(line),
+                    expected_width,
+                    "Theme modal line {line_no} width mismatch for theme idx {idx}: line = '{line}'"
+                );
+            }
+        }
+    }
 }

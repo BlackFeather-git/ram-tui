@@ -13,11 +13,11 @@
 <br />
 
 [![CI](https://github.com/BlackFeather-git/ram-tui/actions/workflows/ci.yml/badge.svg?branch=test)](https://github.com/BlackFeather-git/ram-tui/actions)
-[![Latest Release](https://img.shields.io/badge/release-v1.0.2-brightgreen.svg)](https://github.com/BlackFeather-git/ram-tui/releases)
+[![Latest Release](https://img.shields.io/badge/release-v1.0.3-brightgreen.svg)](https://github.com/BlackFeather-git/ram-tui/releases)
 [![Rust 1.70+](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-brightgreen.svg)]()
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-69%20passed-success)](cli/tests/)
+[![Tests](https://img.shields.io/badge/tests-71%20passed-success)](cli/tests/)
 
 [Why RAM-TUI?](#why-ram-tui) · [Benchmarks](#performance--benchmarks) · [Quick Start](#quick-start) · [Installation](#installation) · [Color Themes](#color-themes) · [Display Modes](#display-modes) · [Kernel Telemetry](#deep-kernel-telemetry) · [Hotkeys](#interactive-hotkeys) · [Status Bars](#status-bar-integration) · [JSON](#json-telemetry) · [Architecture](#architecture) · [Security](#security--updates)
 
@@ -268,7 +268,7 @@ ram --json --once | jq '.memory'
   "timestamp": "2026-09-02T00:45:00",
   "hostname": "shadow",
   "os": "Linux",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "memory": {
     "total": 33299738624,
     "available": 26884991488,
