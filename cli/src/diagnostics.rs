@@ -15,6 +15,8 @@ pub fn get_log_dir() -> PathBuf {
         PathBuf::from(cache_home).join("ram-tui")
     } else if let Ok(home) = std::env::var("HOME") {
         PathBuf::from(home).join(".cache").join("ram-tui")
+    } else if let Ok(user_profile) = std::env::var("USERPROFILE") {
+        PathBuf::from(user_profile).join(".cache").join("ram-tui")
     } else {
         std::env::temp_dir().join("ram-tui")
     }

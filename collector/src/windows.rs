@@ -234,7 +234,7 @@ pub fn collect_processes_sorted(
         let comm = core_render::format::sanitize_text(&raw_comm);
 
         if group_by_name {
-            let entry = grouped.entry(comm.clone()).or_insert(ProcessInfo {
+            let entry = grouped.entry(comm.clone()).or_insert_with(|| ProcessInfo {
                 name: comm.clone(),
                 rss: 0,
                 pss: None,
@@ -243,9 +243,10 @@ pub fn collect_processes_sorted(
                 pid: None,
                 children: Vec::new(),
             });
-            entry.rss += rss_bytes;
+            entry.rss = entry.rss.saturating_add(rss_bytes);
             if let Some(u) = uss_bytes {
-                *entry.uss.get_or_insert(0) += u;
+                let uss = entry.uss.get_or_insert(0);
+                *uss = uss.saturating_add(u);
             }
             entry.count += 1;
             entry.children.push(ProcessChild {

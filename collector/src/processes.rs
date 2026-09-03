@@ -59,9 +59,8 @@ pub struct ProcessInfo {
 pub fn parse_starttime(stat_content: &str) -> Option<String> {
     let rparen = stat_content.rfind(')')?;
     let rest = stat_content.get(rparen + 2..)?;
-    let fields: Vec<&str> = rest.split_whitespace().collect();
     // Field index 19 (0-based from after comm) = starttime (field 22 in man proc)
-    fields.get(19).map(|s| s.to_string())
+    rest.split_whitespace().nth(19).map(|s| s.to_string())
 }
 
 /// Read the comm name for a PID from /proc/<pid>/comm, falling back to cmdline.

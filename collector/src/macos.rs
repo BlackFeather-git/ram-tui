@@ -123,13 +123,13 @@ pub fn collect_meminfo() -> MemInfo {
         }
     }
 
-    let available = free + inactive + speculative;
+    let available = free.saturating_add(inactive).saturating_add(speculative);
     let used = if total > available {
-        total - available
+        total.saturating_sub(available)
     } else {
-        active + wired + compressed
+        active.saturating_add(wired).saturating_add(compressed)
     };
-    let cached = inactive + speculative;
+    let cached = inactive.saturating_add(speculative);
 
     MemInfo {
         total,
@@ -236,7 +236,7 @@ pub fn collect_processes_sorted(
         let pid_u32 = pid as u32;
 
         if group_by_name {
-            let entry = grouped.entry(comm.clone()).or_insert(ProcessInfo {
+            let entry = grouped.entry(comm.clone()).or_insert_with(|| ProcessInfo {
                 name: comm.clone(),
                 rss: 0,
                 pss: None,
@@ -245,7 +245,7 @@ pub fn collect_processes_sorted(
                 pid: None,
                 children: Vec::new(),
             });
-            entry.rss += rss_bytes;
+            entry.rss = entry.rss.saturating_add(rss_bytes);
             entry.count += 1;
             entry.children.push(ProcessChild {
                 pid: pid_u32,

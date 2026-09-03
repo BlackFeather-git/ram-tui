@@ -80,15 +80,15 @@ pub fn detect_cgroup_from(
 /// Parse /proc/self/cgroup to find the process-relative cgroup path.
 pub fn parse_self_cgroup_path(content: &str, is_v2: bool) -> Option<String> {
     for line in content.lines() {
-        let parts: Vec<&str> = line.splitn(3, ':').collect();
-        if parts.len() == 3 {
+        let mut parts = line.splitn(3, ':');
+        if let (Some(f0), Some(f1), Some(f2)) = (parts.next(), parts.next(), parts.next()) {
             let is_target = if is_v2 {
-                parts[0] == "0" && parts[1].is_empty()
+                f0 == "0" && f1.is_empty()
             } else {
-                parts[1].split(',').any(|c| c == "memory")
+                f1.split(',').any(|c| c == "memory")
             };
             if is_target {
-                let p = parts[2].trim_start_matches('/');
+                let p = f2.trim_start_matches('/');
                 if !p.is_empty() {
                     return Some(p.to_string());
                 }

@@ -1,0 +1,42 @@
+stages:
+  - lint
+  - test
+  - security
+
+image: rust:latest
+
+variables:
+  CARGO_HOME: $CI_PROJECT_DIR/.cargo
+
+cache:
+  key: cargo-cache
+  paths:
+    - .cargo/
+    - target/
+
+fmt:
+  stage: lint
+  before_script:
+    - rustup component add rustfmt
+  script:
+    - cargo fmt --all -- --check
+
+clippy:
+  stage: lint
+  before_script:
+    - rustup component add clippy
+  script:
+    - cargo clippy --workspace --all-targets -- -D warnings
+
+test:
+  stage: test
+  script:
+    - cargo test --workspace
+
+gitleaks:
+  stage: security
+  image:
+    name: zricethezav/gitleaks:latest
+    entrypoint: [""]
+  script:
+    - gitleaks detect --verbose --source .

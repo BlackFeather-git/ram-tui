@@ -49,8 +49,7 @@ fn parse_meminfo_content(content: &str) -> std::collections::HashMap<String, u64
         if let Some((key, rest)) = line.split_once(':') {
             let key = key.trim().to_string();
             let rest = rest.trim();
-            let parts: Vec<&str> = rest.split_whitespace().collect();
-            if let Some(val_str) = parts.first() {
+            if let Some(val_str) = rest.split_whitespace().next() {
                 if let Ok(val) = val_str.parse::<u64>() {
                     // Values in /proc/meminfo are in kB
                     if let Some(bytes) = val.checked_mul(1024) {
@@ -72,8 +71,7 @@ fn detect_swap_type(swaps_content: &str) -> (bool, bool) {
         if line.is_empty() {
             continue;
         }
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        if let Some(dev) = parts.first() {
+        if let Some(dev) = line.split_whitespace().next() {
             if dev.contains("zram") {
                 has_zram = true;
             } else {
@@ -110,9 +108,11 @@ pub fn collect_meminfo_from(
     let used = total.saturating_sub(available);
     let commit_as = *info.get("Committed_AS").unwrap_or(&0);
     let commit_limit = *info.get("CommitLimit").unwrap_or(&total);
-    let cached = info.get("Cached").unwrap_or(&0)
-        + info.get("Buffers").unwrap_or(&0)
-        + info.get("SReclaimable").unwrap_or(&0);
+    let cached = info
+        .get("Cached")
+        .unwrap_or(&0)
+        .saturating_add(*info.get("Buffers").unwrap_or(&0))
+        .saturating_add(*info.get("SReclaimable").unwrap_or(&0));
     let swap_total = *info.get("SwapTotal").unwrap_or(&0);
     let swap_free = *info.get("SwapFree").unwrap_or(&0);
     let swap_used = swap_total.saturating_sub(swap_free);
