@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="assets/logo.png" alt="RAM-TUI Logo" width="128" />
+
 # RAM-TUI
 
 **A blazing-fast, aesthetic, native terminal memory monitor & process telemetry engine with zero runtime dependencies.**
