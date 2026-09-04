@@ -55,6 +55,10 @@ Version `1.0.0` is completely re-engineered from the ground up in native Rust, c
 * **Sub-Millisecond Snapshot Execution**: Fast in-memory telemetry gathering and instantaneous one-shot execution (`--once`).
 * **Differential Double-Buffered Terminal Output**: Only modified terminal cells and rows are flushed to stdout, resulting in flicker-free 60+ FPS rendering and `<0.1%` CPU utilization.
 * **Compact Standalone Footprint**: Stripped release binary compiles with Fat LTO into a standalone static binary (~2.2MB) with zero external dynamic dependencies.
+* **Visual Identity & Iconography**:
+  * `>` represents the command line and terminal-native workflow.
+  * The incomplete arc represents live RAM state, capacity, and allocation monitoring.
+  * The open circle symbolizes a continuous live kernel telemetry stream rather than a static meter.
 
 ---
 
