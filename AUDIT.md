@@ -1,17 +1,17 @@
 # ram-tui — Maintainer Architectural & Security Audit Log
 
-Date: 2026-09-02  
+Date: 2026-09-05  
 Maintainer: Raven (BlackFeather) https://github.com/BlackFeather-git/ram-tui  
-Latest Verified State: `v1.0.3` (Maintenance Release: Sanitized Hostname, Fail-Closed Checksums, Windows Swap Telemetry & Theme Modal Border Fix)  
+Latest Verified State: `v1.0.3-1` (Maintenance Release: Atomic Installer Download Guard, Official Visual Identity, Sanitized Hostname & Zero-Allocation Optimizations)  
 Historical Reference: Initial audit completed at `v0.4.3`, hardened through `v0.5.x`–`v0.7.0` (Python), and fully re-architected in Rust for `v1.0.0`–`v1.0.3`.
 
 ---
 
 ## 1. Executive Summary
 
-`ram-tui v1.0.3` is a standalone, ultra-low-overhead terminal memory monitor and process telemetry engine written in pure, native Rust. It delivers sub-millisecond execution latency, a 2.2MB stripped binary footprint, and deep kernel telemetry (PSS, USS, Cgroups v2/v1 container detection).
+`ram-tui v1.0.3-1` is a standalone, ultra-low-overhead terminal memory monitor and process telemetry engine written in pure, native Rust. It delivers sub-millisecond execution latency, a 2.2MB stripped binary footprint, and deep kernel telemetry (PSS, USS, Cgroups v2/v1 container detection).
 
-This document details the architectural integrity, resolution of confirmed audit findings (`C-001` through `C-405`), memory safety guarantees, zero-allocation render loop, and multi-platform native subsystems.
+This document details the architectural integrity, resolution of confirmed audit findings (`C-001` through `C-501`), memory safety guarantees, zero-allocation render loop, and multi-platform native subsystems.
 
 ---
 
@@ -37,6 +37,7 @@ This document details the architectural integrity, resolution of confirmed audit
 8. **`C-003` (PID-Reuse Safety)**: Keyed process starttime identity from field 22 of `/proc/<pid>/stat` to guard against PID wraparound during prolonged monitoring sessions.
 9. **`C-008` (Unicode & ANSI Sanitization)**: `sanitize_text()` strips ANSI escape sequences, ASCII control characters, and Unicode directional overrides (Bidi controls).
 10. **`C-009` (Idempotent Terminal Restore)**: `TerminalManager` guarantees cleanup of raw mode, alternate screen buffers (`\x1b[?1049l`), and cursor visibility (`\x1b[?25h`) across normal exit, panic hooks, and termination signals.
+11. **`C-501` (Atomic Installer Download & Symlink Guard)**: Upgraded `install.sh` and `install.ps1` to download binary and checksum assets into isolated temporary files (`mktemp` / `[System.IO.Path]::GetTempFileName()`) prior to validation. Binary is atomically moved to final destination (`~/.local/bin/ram-tui`) only after cryptographic SHA-256 verification succeeds, preventing TOCTOU symlink redirection and partial binary truncation.
 
 ---
 
